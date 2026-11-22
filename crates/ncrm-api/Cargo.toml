@@ -1,0 +1,21 @@
+[package]
+name = "ncrm-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sqlx = { workspace = true }
+anyhow = "1.0.104"
+axum = "0.8.9"
+ncrm-core = { version = "0.1.0", path = "../ncrm-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "signal", "net"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+tower = { version = "0.5.3", features = ["util"] }

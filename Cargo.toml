@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["crates/ncrm-core", "crates/ncrm-api", "crates/ncrm-worker"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+sqlx = { version = "0.9.1", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "uuid", "time", "migrate", "macros", "json"] }
+
+[profile.release]
+lto = "thin"

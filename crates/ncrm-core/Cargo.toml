@@ -1,0 +1,17 @@
+[package]
+name = "ncrm-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sqlx = { workspace = true }
+thiserror = "2.0.21"
+time = { version = "0.3.55", features = ["serde"] }
+uuid = { version = "1.29.3", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }

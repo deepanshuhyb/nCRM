@@ -1,0 +1,14 @@
+# Local development database. Production uses a managed Postgres.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ncrm
+      POSTGRES_PASSWORD: ncrm
+      POSTGRES_DB: ncrm
+    ports:
+      - "5432:5432"
+    volumes:
+      - ncrm-pg:/var/lib/postgresql/data
+volumes:
+  ncrm-pg:
