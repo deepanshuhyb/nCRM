@@ -255,6 +255,10 @@ export type ImportPreviewRow = {
   joined_on: string;
   date_of_birth: string | null;
   contacts: { name: string; phone: string; relation: Relation }[];
+  /** Classes they will be put in, by name. */
+  classes: string[];
+  /** The monthly price for those classes, when the row named one. */
+  fee: string | null;
 };
 
 export type ImportPreview = {
@@ -270,7 +274,7 @@ export type ImportPreview = {
   rows: ImportPreviewRow[];
 };
 
-export type ImportResult = { added: number; skipped: number };
+export type ImportResult = { added: number; skipped: number; /** Places in classes given. */ placed: number };
 
 export type AttendanceStatus = "present" | "late" | "absent" | "excused";
 

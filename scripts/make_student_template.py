@@ -18,6 +18,10 @@ COLUMNS = [
     ("Date of birth", 15, date(2015, 3, 4)),
     ("Joined on", 15, date(2024, 4, 3)),
     ("Branch", 18, "Hauz Khas"),
+    # Left empty in the example: a class name only works once that class
+    # exists in the studio, and the example row should import cleanly.
+    ("Class", 26, None),
+    ("Monthly fee", 14, None),
     ("Notes", 34, "Shy at first; loves Bollywood"),
 ]
 
@@ -51,6 +55,8 @@ lines = [
     "Contact name and Relation: whose number it is. Leave them empty for an adult's own number.",
     "Dates as DD/MM/YYYY. Joined on can be in the past; empty means the day you import.",
     "Branch must match a branch name in ncrm; otherwise the branch you choose when importing is used.",
+    "Class: the class's name as it is in ncrm, to put the student in it from today. Several classes: separate them with commas. Empty: add them to classes later.",
+    "Monthly fee: for students with a Class, the name of a monthly price in ncrm or its amount (2500). Empty: they pay with class credits until you choose.",
     "You can also use your own sheet: columns like Student name, Mobile, Mother's phone, Father's phone, DOB and Date of joining are recognised.",
     "Delete the example row before importing, or ncrm will add Aarav Sharma too.",
 ]
@@ -63,6 +69,6 @@ with open("web/public/templates/ncrm-students.csv", "w", newline="", encoding="u
     w = csv.writer(f)
     w.writerow([c[0] for c in COLUMNS])
     w.writerow([
-        c[2].strftime("%d/%m/%Y") if isinstance(c[2], date) else c[2] for c in COLUMNS
+        c[2].strftime("%d/%m/%Y") if isinstance(c[2], date) else (c[2] or "") for c in COLUMNS
     ])
 print("templates written")

@@ -19,6 +19,8 @@ const COLUMNS: { name: string; note: string }[] = [
   { name: "Date of birth", note: "DD/MM/YYYY" },
   { name: "Joined on", note: "can be in the past" },
   { name: "Branch", note: "by name" },
+  { name: "Class", note: "by name, several with commas" },
+  { name: "Monthly fee", note: "a price's name or amount" },
   { name: "Notes", note: "" },
 ];
 

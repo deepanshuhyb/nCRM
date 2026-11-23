@@ -515,7 +515,7 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `GET /students/{id}/credits` | manage students | Usable classes, next expiry, every lot |
 | `POST /students/{id}/credits/sell` | manage fees | Sell a pack or drop-in: `{plan_id, paid?: {method, reference?}}`. The price becomes a charge, paid on the spot or left due |
 | `POST /students/{id}/credits/give`, `/take-back` | manage classes | Free classes or take some back, with a reason |
-| `POST /students/import/preview?branch_id=` | manage students | Body: the .xlsx or .csv file. What would happen to every row; writes nothing |
+| `POST /students/import/preview?branch_id=` | manage students | Body: the .xlsx or .csv file. What would happen to every row, including which classes each student would join (a Class column) and what they would pay (a Monthly fee column); writes nothing |
 | `POST /students/import?branch_id=` | manage students | Same file: adds the ready rows in one transaction, skips the rest |
 | `GET /sessions?date=&branch_id=` | view studio | One day's class meetings (today by default, up to 90 days back, never the future) with counts: expected, came, away, not marked |
 | `GET /sessions/{id}` | view studio | One meeting; `roster` is null unless you may mark it or manage students; `can_mark` says whether you may |

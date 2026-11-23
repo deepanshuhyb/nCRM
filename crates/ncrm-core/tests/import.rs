@@ -434,3 +434,172 @@ async fn the_template_we_hand_out_reads_back_exactly(pool: PgPool) {
         assert!(row.notes.is_empty(), "{:?}", row.notes);
     }
 }
+
+/// A CSV file as bytes.
+fn csv(lines: &[&str]) -> Vec<u8> {
+    lines.join("\n").into_bytes()
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn a_class_column_puts_students_in_classes_and_a_fee_column_prices_them(pool: PgPool) {
+    use ncrm_core::batches::{self, NewBatch, Slot};
+    use ncrm_core::plans::{self, NewPlan, PlanKind};
+    use time::macros::time;
+
+    let (org, desk, _, hauz_khas) = studio(&pool, "classes").await;
+    let mut tx = TenantTx::begin(&pool, org.id).await.unwrap();
+    let owner = staff::create(
+        &mut tx,
+        NewStaff {
+            name: "Owner".into(),
+            phone: "+919800000001".into(),
+            role: StaffRole::Owner,
+            branch_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    let noida: Uuid = sqlx::query_scalar("SELECT id FROM branches WHERE name = 'Noida 18'")
+        .fetch_one(tx.conn())
+        .await
+        .unwrap();
+    let class = |name: &str, branch_id, capacity| NewBatch {
+        name: name.into(),
+        style: None,
+        branch_id,
+        room_id: None,
+        instructor_id: None,
+        capacity,
+        starts_on: None,
+        ends_on: None,
+        slots: vec![Slot {
+            weekday: 1,
+            starts_at: time!(18:00),
+            ends_at: time!(19:00),
+        }],
+    };
+    for new in [
+        class("Hip-hop Beginners", hauz_khas, None),
+        class("Kathak", hauz_khas, Some(1)),
+        // The same name at two branches.
+        class("Zumba", hauz_khas, None),
+        class("Zumba", noida, None),
+    ] {
+        batches::create(&mut tx, actor(&owner), new).await.unwrap();
+    }
+    for (name, price_paise) in [("Twice a week", 250_000), ("Thrice a week", 320_000)] {
+        plans::create(
+            &mut tx,
+            actor(&owner),
+            NewPlan {
+                name: name.into(),
+                kind: PlanKind::Monthly,
+                price_paise,
+                classes: None,
+                valid_days: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
+
+    let sheet = import::read_sheet(&csv(&[
+        "Name,Phone,Branch,Class,Fees",
+        // Two classes, spelt loosely, priced by amount.
+        "Aarav,9811100001,Hauz Khas,\"hip-hop  beginners, Kathak\",\"Rs. 2,500\"",
+        // Kathak holds one, and Aarav has it.
+        "Bela,9811100002,,Kathak,Thrice a week",
+        // Zumba is at two branches: the row's branch decides.
+        "Chirag,9811100003,Noida 18,Zumba,",
+        // No branch, so we can't tell which Zumba. A class nobody has.
+        "Dev,9811100004,,\"Zumba; Salsa\",",
+        // A fee nobody charges, and a fee with no class.
+        "Esha,9811100005,,Hip-hop Beginners,999",
+        "Farhan,9811100006,,,2500",
+    ]))
+    .unwrap();
+
+    let mut tx = TenantTx::begin(&pool, org.id).await.unwrap();
+    let preview = import::preview(&mut tx, actor(&desk), &sheet, &ImportOptions::default())
+        .await
+        .unwrap();
+    assert!(
+        preview.ignored_columns.is_empty(),
+        "{:?}",
+        preview.ignored_columns
+    );
+    assert_eq!(preview.ready, 6);
+    let row = |name: &str| preview.rows.iter().find(|r| r.name == name).unwrap();
+    assert_eq!(row("Aarav").classes, ["Hip-hop Beginners", "Kathak"]);
+    assert_eq!(row("Aarav").fee.as_deref(), Some("Twice a week"));
+    assert!(row("Aarav").notes.is_empty(), "{:?}", row("Aarav").notes);
+    assert!(row("Bela").classes.is_empty());
+    assert!(row("Bela").notes[0].contains("Kathak is full"));
+    assert_eq!(row("Chirag").classes, ["Zumba"]);
+    assert!(row("Dev").classes.is_empty());
+    assert!(row("Dev")
+        .notes
+        .iter()
+        .any(|n| n.contains("2 classes are called \"Zumba\"")));
+    assert!(row("Dev")
+        .notes
+        .iter()
+        .any(|n| n.contains("no class called \"Salsa\"")));
+    assert_eq!(row("Esha").classes, ["Hip-hop Beginners"]);
+    assert_eq!(row("Esha").fee, None);
+    assert!(row("Esha").notes[0].contains("No monthly price matches \"999\""));
+    assert!(row("Farhan")
+        .notes
+        .iter()
+        .any(|n| n.contains("no class to charge it for")));
+    // Looking changes nothing.
+    assert_eq!(count_students(&pool, &org).await, 0);
+
+    let done = import::commit(&mut tx, actor(&desk), &sheet, &ImportOptions::default())
+        .await
+        .unwrap();
+    assert_eq!((done.added, done.placed), (6, 4));
+    tx.commit().await.unwrap();
+
+    // Who is where, and what they pay.
+    let places: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT s.name, b.name, br.name, p.name
+           FROM enrollments e
+           JOIN students s ON s.id = e.student_id
+           JOIN batches b ON b.id = e.batch_id
+           JOIN branches br ON br.id = b.branch_id
+           LEFT JOIN plans p ON p.id = e.plan_id
+          WHERE e.org_id = $1
+          ORDER BY s.name, b.name",
+    )
+    .bind(org.id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let as_strs: Vec<(&str, &str, &str, Option<&str>)> = places
+        .iter()
+        .map(|(a, b, c, d)| (a.as_str(), b.as_str(), c.as_str(), d.as_deref()))
+        .collect();
+    assert_eq!(
+        as_strs,
+        [
+            (
+                "Aarav",
+                "Hip-hop Beginners",
+                "Hauz Khas",
+                Some("Twice a week")
+            ),
+            ("Aarav", "Kathak", "Hauz Khas", Some("Twice a week")),
+            ("Chirag", "Zumba", "Noida 18", None),
+            ("Esha", "Hip-hop Beginners", "Hauz Khas", None),
+        ]
+    );
+
+    // Importing the same file again adds nobody and places nobody.
+    let mut tx = TenantTx::begin(&pool, org.id).await.unwrap();
+    let again = import::commit(&mut tx, actor(&desk), &sheet, &ImportOptions::default())
+        .await
+        .unwrap();
+    assert_eq!((again.added, again.placed), (0, 0));
+}

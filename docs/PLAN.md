@@ -40,7 +40,7 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [ ] Rename a contact; merge two contacts that turn out to be one person
 - [x] Excel and CSV import with a preview, duplicate detection by name and phone, and safe re-import
 - [x] `students.joined_on` set from the studio's date; join dates and class starts can be backdated, marked with a pill
-- [ ] Import: a Class column that also puts each student in that class
+- [x] Import: a Class column (several with commas) puts each student in those classes from today; a Monthly fee column (a price's name or amount) sets what they pay
 
 ## 2. Attendance and bookings
 

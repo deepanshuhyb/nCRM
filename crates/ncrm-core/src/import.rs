@@ -35,6 +35,7 @@ use uuid::Uuid;
 use crate::access::{Actor, Capability};
 use crate::audit::{self, NewAuditEntry};
 use crate::db::TenantTx;
+use crate::enrollments::{self, NewEnrollment};
 use crate::students::{self, NewContact, NewStudent, Relation};
 use crate::{phone, Error, Result};
 
@@ -291,6 +292,8 @@ enum Field {
     MotherName,
     FatherPhone,
     FatherName,
+    Class,
+    Fee,
 }
 
 impl Field {
@@ -308,6 +311,8 @@ impl Field {
             Field::MotherName => "Mother's name",
             Field::FatherPhone => "Father's phone",
             Field::FatherName => "Father's name",
+            Field::Class => "Class",
+            Field::Fee => "Monthly fee",
         }
     }
 }
@@ -437,6 +442,30 @@ const TITLES: &[(Field, &[&str])] = &[
     (
         Field::FatherName,
         &["father", "father name", "fathers name"],
+    ),
+    (
+        Field::Class,
+        &[
+            "class",
+            "classes",
+            "class name",
+            "batch",
+            "batches",
+            "batch name",
+            "course",
+        ],
+    ),
+    (
+        Field::Fee,
+        &[
+            "fee",
+            "fees",
+            "monthly fee",
+            "monthly fees",
+            "fee plan",
+            "plan",
+            "fee amount",
+        ],
     ),
 ];
 
@@ -695,6 +724,11 @@ pub struct PreviewRow {
     pub joined_on: Date,
     pub date_of_birth: Option<Date>,
     pub contacts: Vec<PreviewContact>,
+    /// Classes they will be put in, by name.
+    pub classes: Vec<String>,
+    /// The monthly price they will pay for those classes, when the row
+    /// gave one we recognise: "Monthly, twice a week".
+    pub fee: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -716,12 +750,61 @@ pub struct Preview {
 pub struct ImportResult {
     pub added: usize,
     pub skipped: usize,
+    /// Places in classes given to the students added.
+    pub placed: usize,
 }
 
 struct Planned {
     preview: PreviewRow,
     branch_id: Option<Uuid>,
     notes_field: Option<String>,
+    /// Classes to put them in.
+    join: Vec<Uuid>,
+    /// The monthly price for those classes, or none (class credits).
+    plan_id: Option<Uuid>,
+}
+
+/// A class as the import sees it.
+struct ClassInfo {
+    id: Uuid,
+    name: String,
+    branch_id: Uuid,
+    /// Places left; `None` when the class has no limit.
+    places: Option<i64>,
+}
+
+/// "Hip-Hop  beginners " and "hip-hop Beginners" are the same class.
+fn same_words(s: &str) -> String {
+    s.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// Which monthly price a Fee cell means: its name, or its amount
+/// ("2500", "₹2,500", "Rs. 2500/-"). `None` when nothing, or more than
+/// one price, matches.
+fn find_plan(monthly: &[(Uuid, String, i64)], cell: &str) -> Option<(Uuid, String)> {
+    let wanted = same_words(cell);
+    if let Some((id, name, _)) = monthly.iter().find(|(_, n, _)| same_words(n) == wanted) {
+        return Some((*id, name.clone()));
+    }
+    // The whole rupees: from the first digit, through digits and the
+    // commas between them, stopping at anything else ("2,500.00" → 2500).
+    let digits: String = cell
+        .chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(|c| c.is_ascii_digit() || *c == ',')
+        .filter(char::is_ascii_digit)
+        .collect();
+    let rupees: i64 = digits.parse().ok()?;
+    let mut priced = monthly
+        .iter()
+        .filter(|(_, _, paise)| *paise == rupees * 100);
+    match (priced.next(), priced.next()) {
+        (Some((id, name, _)), None) => Some((*id, name.clone())),
+        _ => None,
+    }
 }
 
 /// What would happen to every row. Writes nothing.
@@ -749,10 +832,12 @@ pub async fn commit(
     let (preview, planned) = plan(tx, sheet, options).await?;
 
     let mut added = 0;
+    let mut placed = 0;
     for p in planned
         .into_iter()
         .filter(|p| p.preview.outcome == Outcome::Ready)
     {
+        let (join, plan_id) = (p.join, p.plan_id);
         let row = p.preview;
         let contacts = row
             .contacts
@@ -765,7 +850,7 @@ pub async fn commit(
                 is_primary: i == 0,
             })
             .collect();
-        students::create_via(
+        let created = students::create_via(
             tx,
             actor,
             NewStudent {
@@ -780,6 +865,23 @@ pub async fn commit(
         )
         .await?;
         added += 1;
+        // In the class from today. Their joining date keeps the history;
+        // a place in a class that starts in the past would ask for
+        // attendance that was never taken.
+        for batch_id in join {
+            enrollments::enroll(
+                tx,
+                actor,
+                created,
+                NewEnrollment {
+                    batch_id,
+                    plan_id,
+                    starts_on: None,
+                },
+            )
+            .await?;
+            placed += 1;
+        }
     }
 
     let skipped = preview.total - added;
@@ -790,11 +892,15 @@ pub async fn commit(
             action: "students.imported".into(),
             entity: "student".into(),
             entity_id: None,
-            detail: json!({ "rows": preview.total, "added": added, "skipped": skipped }),
+            detail: json!({ "rows": preview.total, "added": added, "skipped": skipped, "placed": placed }),
         },
     )
     .await?;
-    Ok(ImportResult { added, skipped })
+    Ok(ImportResult {
+        added,
+        skipped,
+        placed,
+    })
 }
 
 async fn plan(
@@ -845,6 +951,35 @@ async fn plan(
         }
         known_names.insert(key);
     }
+
+    // Classes that can be joined, with the places each has left, and the
+    // monthly prices a Fee column can name.
+    let class_rows: Vec<(Uuid, String, Uuid, Option<i32>, i64)> = sqlx::query_as(
+        "SELECT b.id, b.name, b.branch_id, b.capacity,
+                (SELECT count(*) FROM enrollments e
+                  WHERE e.org_id = b.org_id AND e.batch_id = b.id
+                    AND (e.ended_on IS NULL OR e.ended_on > $1))
+           FROM batches b
+          WHERE b.active AND (b.ends_on IS NULL OR b.ends_on >= $1)",
+    )
+    .bind(today)
+    .fetch_all(tx.conn())
+    .await?;
+    let classes: Vec<ClassInfo> = class_rows
+        .into_iter()
+        .map(|(id, name, branch_id, capacity, enrolled)| ClassInfo {
+            id,
+            name,
+            branch_id,
+            places: capacity.map(|c| i64::from(c) - enrolled),
+        })
+        .collect();
+    let monthly: Vec<(Uuid, String, i64)> =
+        sqlx::query_as("SELECT id, name, price_paise FROM plans WHERE kind = 'monthly' AND active")
+            .fetch_all(tx.conn())
+            .await?;
+    // Places taken by earlier rows of this file.
+    let mut taken: HashMap<Uuid, i64> = HashMap::new();
 
     let mut seen_in_file: HashMap<(String, Option<String>), u32> = HashMap::new();
     let mut planned = Vec::with_capacity(data.len());
@@ -1040,6 +1175,74 @@ async fn plan(
                 }
             }
         }
+        // Classes: by name, several separated by commas. Only for rows
+        // that will be added; a student already here keeps what they have.
+        let class_cell = get(Field::Class).shown();
+        let fee_cell = get(Field::Fee).shown();
+        let mut join: Vec<(Uuid, String)> = Vec::new();
+        let mut fee: Option<(Uuid, String)> = None;
+        if outcome == Outcome::Ready {
+            for wanted in class_cell
+                .split([',', ';'])
+                .map(str::trim)
+                .filter(|w| !w.is_empty())
+            {
+                let named: Vec<&ClassInfo> = classes
+                    .iter()
+                    .filter(|c| same_words(&c.name) == same_words(wanted))
+                    .collect();
+                let class = match named.as_slice() {
+                    [] => {
+                        notes.push(format!(
+                            "There's no class called \"{wanted}\", so they weren't put in one."
+                        ));
+                        continue;
+                    }
+                    [only] => *only,
+                    // The same name at two branches: the row's branch decides.
+                    several => match branch
+                        .as_ref()
+                        .and_then(|(id, _)| several.iter().find(|c| c.branch_id == *id))
+                    {
+                        Some(class) => *class,
+                        None => {
+                            notes.push(format!(
+                                "{} classes are called \"{wanted}\". Give the row a branch so we know which.",
+                                several.len()
+                            ));
+                            continue;
+                        }
+                    },
+                };
+                if join.iter().any(|(id, _)| *id == class.id) {
+                    continue;
+                }
+                let used = taken.entry(class.id).or_insert(0);
+                if class.places.is_some_and(|left| left - *used <= 0) {
+                    notes.push(format!(
+                        "{} is full, so they weren't put in it.",
+                        class.name
+                    ));
+                    continue;
+                }
+                *used += 1;
+                join.push((class.id, class.name.clone()));
+            }
+            if !fee_cell.is_empty() {
+                if join.is_empty() {
+                    notes.push(
+                        "A fee was given but no class to charge it for, so it was left out.".into(),
+                    );
+                } else {
+                    fee = find_plan(&monthly, &fee_cell);
+                    if fee.is_none() {
+                        notes.push(format!(
+                            "No monthly price matches \"{fee_cell}\", so they pay with class credits until you choose one."
+                        ));
+                    }
+                }
+            }
+        }
         if outcome == Outcome::Ready {
             seen_in_file.insert((key.clone(), first_phone.clone()), *row_number);
             // Later rows in this file see this one as known too, so a
@@ -1059,9 +1262,13 @@ async fn plan(
                 joined_on,
                 date_of_birth,
                 contacts,
+                classes: join.iter().map(|(_, name)| name.clone()).collect(),
+                fee: fee.as_ref().map(|(_, name)| name.clone()),
             },
             branch_id: branch.map(|(id, _)| id),
             notes_field,
+            join: join.into_iter().map(|(id, _)| id).collect(),
+            plan_id: fee.map(|(id, _)| id),
         });
     }
 

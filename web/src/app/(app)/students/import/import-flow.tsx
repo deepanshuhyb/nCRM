@@ -92,6 +92,7 @@ export function ImportFlow({ branches, today }: { branches: { id: string; name: 
         </h2>
         <p className="soft m-0">
           {result.skipped === 0 ? "Every row was added." : `${result.skipped} ${result.skipped === 1 ? "row was" : "rows were"} skipped, as the preview showed.`}
+          {result.placed > 0 ? ` ${result.placed} ${result.placed === 1 ? "place" : "places"} in classes given, from today.` : ""}
         </p>
         <div className="flex flex-wrap gap-2">
           <Link href="/students" className="btn btn-primary">
@@ -281,6 +282,12 @@ export function ImportFlow({ branches, today }: { branches: { id: string; name: 
                     </span>
                     <span className="flex flex-wrap items-center gap-2 text-[13px]">
                       <span className="soft">{r.branch_name ?? "No branch"}</span>
+                      {r.classes.length > 0 ? (
+                        <span className="font-semibold">
+                          {r.classes.join(", ")}
+                          {r.fee ? ` (${r.fee})` : ""}
+                        </span>
+                      ) : null}
                       <span className="soft">Joined {formatDate(r.joined_on)}</span>
                       <BackdatedPill date={r.joined_on} enteredOn={today} />
                     </span>

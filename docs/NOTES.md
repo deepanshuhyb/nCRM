@@ -16,6 +16,50 @@ Template:
 
 ---
 
+## 2026-11-24: Importing students straight into their classes
+
+**Context:** a studio moving in has a sheet with a class beside each
+name. Until now the import added the students and someone then put each
+one in a class by hand.
+
+**What wasn't obvious:**
+- A class is named by a person, in a spreadsheet: "hip-hop  beginners",
+  "Kathak, Zumba" in one cell.
+- Two branches can each have a class called "Zumba".
+- Classes have a size. Row 40 can be the one that fills the class, and
+  that depends on rows 1 to 39 of the same file, which aren't saved yet
+  when the preview is shown.
+- Being in a class says nothing about how they pay. Studios keep a
+  "Fees" column that holds an amount (2500, "Rs. 2,500/-"), not the name
+  of a price.
+- A place in a class that starts in the past would ask for attendance
+  that was never taken.
+
+**What we did** (`import.rs`):
+- A **Class** column (also "Batch", "Course"): names are compared
+  ignoring case and extra spaces, several separated by commas or
+  semicolons. A name shared by two branches is settled by the row's
+  branch, and otherwise the row says so and the student is added without
+  it.
+- The preview counts places as it goes, so it shows "Kathak is full" on
+  exactly the rows that won't fit. Committing re-plans under the same
+  import lock and then uses the ordinary `enrollments::enroll`, with all
+  its checks.
+- A **Monthly fee** column (also "Fees", "Plan"): the name of a monthly
+  price, or an amount that matches exactly one. No match: they are in
+  the class and pay with class credits until someone chooses.
+- Students are in the class **from today**; their joining date keeps the
+  history.
+- Only rows that add a student are placed. Importing the same file again
+  adds nobody and places nobody.
+
+**Consequences:** a class or price has to exist before the import that
+names it; the preview points at every row where it doesn't. If monthly
+fees are switched on, a student imported with a monthly price is charged
+for this month like any new joiner, and fee reminders follow. A studio
+moving in mid-month should import first and start fees "from next
+month".
+
 ## 2026-11-24: A downloaded report must not run a student's name as a formula
 
 **Context:** the Reports page lets an owner download each table as a
