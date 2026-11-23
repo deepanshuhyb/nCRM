@@ -26,8 +26,12 @@ studio ("Rhythm House": three branches, classes, prices, students) with
 you as its owner:
 
 ```sh
-./scripts/dev.sh 9876543210 "Your Name"    # your own phone number
+./scripts/dev.sh --install 9876543210 "Your Name"    # your own phone number
 ```
+
+`--install` uses Homebrew to add whatever is missing (Postgres 16, Node,
+pnpm) and rustup for Rust; leave it out if you'd rather install things
+yourself, and the script will only tell you what's missing.
 
 Open http://localhost:3000 and sign in with that number. No message is
 sent in development: the 6-digit code is printed in the same terminal, on
@@ -36,18 +40,9 @@ a line like `[api] [ncrm dev] sign-in code for +91...: 123456`.
 After the first time, `./scripts/dev.sh` alone is enough. Run it with
 another number to add another owner. Ctrl+C stops everything.
 
-You need:
-
-- Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- Node 22+ and pnpm: `brew install node && npm install -g pnpm`
-- Postgres 16, either through Docker Desktop (the script starts it), or
-  your own:
-
-  ```sh
-  brew install postgresql@16 && brew services start postgresql@16
-  psql postgres -c "CREATE ROLE ncrm LOGIN SUPERUSER PASSWORD 'ncrm'"
-  psql postgres -c "CREATE DATABASE ncrm OWNER ncrm"
-  ```
+Postgres can also come from Docker Desktop (the script starts it), or be
+one you already run on localhost:5432; the script creates the `ncrm`
+database user and database there if they're missing.
 
 The script writes `.env` (with a fresh `AUTH_SECRET`) and
 `web/.env.local` from the examples the first time. To start again from an
