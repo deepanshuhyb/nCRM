@@ -1,0 +1,27 @@
+# The dashboard (Next.js), built once and run with `next start`.
+#
+#   docker build -f deploy/Dockerfile.web -t ncrm-web web
+#
+# The build context is the web/ folder.
+
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+# API_ORIGIN is read when a request arrives, not at build time.
+RUN pnpm build && pnpm prune --prod
+
+FROM node:22-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
+COPY --from=build /app/package.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/.next ./.next
+COPY --from=build /app/public ./public
+COPY --from=build /app/next.config.ts ./
+# The image's built-in unprivileged user.
+USER node
+EXPOSE 3000
+CMD ["node_modules/.bin/next", "start"]

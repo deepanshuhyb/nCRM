@@ -96,9 +96,10 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [ ] Subscription billing
 - [ ] Lead capture: Instagram, Meta lead ads, forms
 - [ ] Sheets sync, accounting export, public API and webhooks
-- [ ] nginx config: TLS, `X-Real-IP`, only public listener; API and dashboard on 127.0.0.1
+- [x] Deployment files (`deploy/`): Docker images, compose, nginx config with TLS and `X-Real-IP`; API not published, dashboard on 127.0.0.1. Not yet run on a real server
 - [ ] Move rate-limit counters to Postgres if we run more than one API process
-- [ ] Cleanup job: delete sign-in codes older than a day, expired sessions
+- [x] Worker: cleanup of old sign-in codes and sessions; per-studio upkeep (class meetings for the week, the month's fees)
+- [ ] A command to create a studio and its first owner on a server (until self-serve signup)
 - [ ] Verifiable parental consent for students under 18 (DPDP Rules 2025, Rule 10; applies from 13 May 2027). Ask a lawyer whether any exemption covers studios
 - [ ] Erase a person on request: audited owner-role job, not a dashboard button
 - [ ] Optimistic locking (version column) if two people editing one record becomes a real problem

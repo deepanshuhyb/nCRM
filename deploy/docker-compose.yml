@@ -1,0 +1,73 @@
+# ncrm on one server: Postgres, the API, the worker and the dashboard.
+#
+#   cp deploy/.env.example deploy/.env   # then fill it in
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#
+# Only the dashboard is reachable from outside the Docker network, and only
+# on 127.0.0.1: nginx on the host (deploy/nginx.conf) is the single public
+# door. The browser never talks to the API directly; the dashboard's
+# /api gateway does.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ncrm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: ncrm
+    volumes:
+      - ncrm-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ncrm -d ncrm"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://ncrm:${POSTGRES_PASSWORD}@postgres:5432/ncrm
+      BIND_ADDR: 0.0.0.0:8080
+      RUN_MIGRATIONS: "1"
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in deploy/.env}
+      ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
+      CODE_SENDER: ${CODE_SENDER:-log}
+      # nginx sets this header to the visitor's address; nothing else can
+      # reach the API, so it can be trusted for rate limits.
+      CLIENT_IP_HEADER: x-real-ip
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    command: ["ncrm-worker"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://ncrm:${POSTGRES_PASSWORD}@postgres:5432/ncrm
+      WORKER_INTERVAL_SECS: ${WORKER_INTERVAL_SECS:-300}
+
+  web:
+    build:
+      context: ../web
+      dockerfile: ../deploy/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_ORIGIN: http://api:8080
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  ncrm-pg:

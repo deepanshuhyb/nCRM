@@ -16,6 +16,7 @@ pub mod enrollments;
 pub mod error;
 pub mod fees;
 pub mod import;
+pub mod jobs;
 pub mod orgs;
 pub mod phone;
 pub mod plans;

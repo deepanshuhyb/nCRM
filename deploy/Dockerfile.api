@@ -1,0 +1,28 @@
+# The API and the worker, in one image (they share almost all their code).
+#
+#   docker build -f deploy/Dockerfile.api -t ncrm-api .
+#
+# Two stages: a full Rust toolchain to compile, then a small image with
+# only the two programs. Migrations are compiled into the binaries.
+
+FROM rust:1-bookworm AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY migrations ./migrations
+RUN cargo build --release --locked -p ncrm-api -p ncrm-worker \
+    && strip target/release/ncrm-api target/release/ncrm-worker
+
+FROM debian:bookworm-slim
+# ca-certificates: outgoing HTTPS (WhatsApp, Razorpay). curl: the health check.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --no-create-home ncrm
+COPY --from=build /src/target/release/ncrm-api /src/target/release/ncrm-worker /usr/local/bin/
+# Never root: a bug in the server shouldn't own the container.
+USER ncrm
+ENV BIND_ADDR=0.0.0.0:8080
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
+CMD ["ncrm-api"]

@@ -63,6 +63,7 @@ crates/
     src/fees.rs      charges, payments and how they settle, receipts, dues,
                      monthly fees
     src/reports.rs   counts and sums for the dashboard's graphs
+    src/jobs.rs      what the worker does for every studio
     src/import.rs    student lists from .xlsx/.csv: safe reading, preview, commit
     src/validate.rs  shared input checks with plain messages
     src/phone.rs     phone number normalization
@@ -83,7 +84,7 @@ crates/
     src/attendance.rs  /sessions, /attendance/alerts, /students/{id}/attendance
     src/fees.rs      /fees/..., /payments, /charges, /students/{id}/fees
     src/reports.rs   /reports/..., /batches/{id}/history
-  ncrm-worker/  background jobs (stub)
+  ncrm-worker/  background jobs on a timer (see "Background jobs")
 migrations/     SQL, applied in order, embedded into the binaries
 web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
   src/proxy.ts               CSP nonce + security headers, sign-in redirect
@@ -701,6 +702,8 @@ allowed to. Each looks up only the caller's own phone number or session:
 | `auth::session_from_token`, `staff_context` | Turns a cookie into a studio context, on every request |
 | `orgs::create` | A new studio doesn't exist yet |
 | `orgs::find_by_slug` | Used by the development seeder (`ncrm-dev-seed`) to see whether the demo studio exists; later by signup |
+| `auth::cleanup` | Deletes old sign-in codes and sessions; those tables belong to no studio |
+| `jobs::studio_ids` | The worker's list of studios to do upkeep for. Returns ids only; everything it then does for a studio runs inside that studio's `TenantTx` |
 
 ## Configuration
 
@@ -714,20 +717,32 @@ allowed to. Each looks up only the caller's own phone number or session:
 | `RUN_MIGRATIONS` | api | `1` to apply migrations at startup. |
 | `COOKIE_SECURE` | api | Default on (`__Host-` cookie, HTTPS only). `0` only for local http. |
 | `CODE_SENDER` | api | `log` (default, development). WhatsApp comes with that milestone. |
+| `WORKER_INTERVAL_SECS` | worker | Seconds between housekeeping passes. Default 300, minimum 30. |
 | `API_ORIGIN` | dashboard | Where the dashboard's server reaches the API, e.g. `http://127.0.0.1:8080`. Server-side only. |
 
-## Deployment shape *(planned)*
+## Background jobs
 
-One VPS to start:
+`ncrm-worker` wakes every `WORKER_INTERVAL_SECS` (default 300) and runs
+`ncrm_core::jobs::housekeeping`:
 
-- **nginx** is the only public listener: TLS, HTTP→HTTPS redirect, and
-  `proxy_set_header X-Real-IP $remote_addr;` (which overwrites anything the
-  client sent).
-- **Dashboard** (`next start`) on `127.0.0.1:3000`, behind nginx.
-- **API** on `127.0.0.1:8080`, reachable only from the dashboard (and
-  later nginx for webhooks), with `CLIENT_IP_HEADER=x-real-ip` and
-  `ALLOWED_ORIGINS=https://<dashboard domain>`.
-- **Postgres**: managed, with automatic backups.
+1. `auth::cleanup`: delete sign-in codes older than a day, and sessions
+   that expired or were signed out more than a week ago.
+2. For every studio, inside that studio's own `TenantTx`: make sure the
+   last week's class meetings exist (so an unmarked class is listed even
+   if nobody opened the dashboard) and this month's fees are created.
+
+Every job only does what a page load would also do, so running a pass
+twice, or while people are using the dashboard, changes nothing. One
+studio failing is logged and doesn't stop the others. The worker stops
+cleanly on Ctrl+C or SIGTERM.
+
+## Deployment
+
+One server: nginx on the host, and Postgres, the API, the worker and the
+dashboard in Docker (`deploy/`). nginx is the only public listener; the
+dashboard is published on 127.0.0.1 only and the API not at all.
+`docs/DEPLOY.md` has the steps, and says plainly what has not been tried
+on a real server yet.
 
 ## Testing
 

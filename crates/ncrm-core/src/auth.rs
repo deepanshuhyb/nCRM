@@ -485,3 +485,34 @@ mod tests {
         assert_eq!(token_hash(&a).len(), 32);
     }
 }
+
+/// What `cleanup` removed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Cleanup {
+    pub codes: u64,
+    pub sessions: u64,
+}
+
+/// Delete sign-in records nobody needs any more: codes older than a day
+/// (they stop working after ten minutes; a day keeps the "5 codes an hour"
+/// limit honest), and sessions that expired or were signed out more than a
+/// week ago.
+///
+/// Runs outside any studio, like the rest of this module: these tables
+/// belong to no studio. Called by the worker (`jobs::housekeeping`).
+pub async fn cleanup(pool: &PgPool) -> Result<Cleanup> {
+    let codes =
+        sqlx::query("DELETE FROM platform.login_codes WHERE created_at < now() - interval '1 day'")
+            .execute(pool)
+            .await?
+            .rows_affected();
+    let sessions = sqlx::query(
+        "DELETE FROM platform.sessions
+          WHERE expires_at < now() - interval '7 days'
+             OR revoked_at < now() - interval '7 days'",
+    )
+    .execute(pool)
+    .await?
+    .rows_affected();
+    Ok(Cleanup { codes, sessions })
+}
