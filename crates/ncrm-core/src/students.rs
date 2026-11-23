@@ -56,7 +56,11 @@ pub struct Student {
     pub date_of_birth: Option<Date>,
     pub status: StudentStatus,
     pub notes: Option<String>,
+    /// When they joined the studio. Staff can backdate it.
     pub joined_on: Date,
+    /// The studio's date when this record was entered. `joined_on` earlier
+    /// than this means the join date was backdated.
+    pub entered_on: Date,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -119,6 +123,9 @@ pub struct NewStudent {
     pub date_of_birth: Option<Date>,
     pub branch_id: Option<Uuid>,
     pub notes: Option<String>,
+    /// `None` means today. An earlier date backdates the join.
+    #[serde(default)]
+    pub joined_on: Option<Date>,
     #[serde(default)]
     pub contacts: Vec<NewContact>,
 }
@@ -131,6 +138,7 @@ pub struct StudentEdit {
     pub branch_id: Option<Uuid>,
     pub status: StudentStatus,
     pub notes: Option<String>,
+    pub joined_on: Date,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -144,46 +152,66 @@ pub struct ListQuery {
 }
 
 const STUDENT_COLUMNS: &str =
-    "id, org_id, branch_id, name, date_of_birth, status, notes, joined_on, created_at, updated_at";
+    "id, org_id, branch_id, name, date_of_birth, status, notes, joined_on,
+     studio_date(org_id, created_at) AS entered_on, created_at, updated_at";
 
 /// Add a student with their contacts.
 pub async fn create(tx: &mut TenantTx, actor: Actor, new: NewStudent) -> Result<StudentDetail> {
+    let id = create_via(tx, actor, new, "form").await?;
+    get(tx, id).await
+}
+
+/// Create a student and return its id. `via` ("form", "import") is
+/// recorded in the audit log.
+pub(crate) async fn create_via(
+    tx: &mut TenantTx,
+    actor: Actor,
+    new: NewStudent,
+    via: &str,
+) -> Result<Uuid> {
     actor.require(Capability::ManageStudents)?;
     let name = clean_name(&new.name)?;
-    check_birth_date(new.date_of_birth)?;
+    let today = tx.studio_today().await?;
+    let joined_on = new.joined_on.unwrap_or(today);
+    check_dates(new.date_of_birth, joined_on, today)?;
     let notes = clean_notes(new.notes)?;
     let contacts = clean_contacts(new.contacts)?;
 
     let org_id = tx.org_id();
-    let student = sqlx::query_as::<_, Student>(sqlx::AssertSqlSafe(format!(
-        "INSERT INTO students (org_id, branch_id, name, date_of_birth, notes)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING {STUDENT_COLUMNS}"
-    )))
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO students (org_id, branch_id, name, date_of_birth, notes, joined_on)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id",
+    )
     .bind(org_id)
     .bind(new.branch_id)
     .bind(&name)
     .bind(new.date_of_birth)
     .bind(notes)
+    .bind(joined_on)
     .fetch_one(tx.conn())
     .await?;
 
     for c in &contacts {
-        link_contact(tx, student.id, c).await?;
+        link_contact(tx, id, c).await?;
     }
 
+    let mut detail = json!({ "contacts": contacts.len(), "via": via });
+    if joined_on < today {
+        detail["backdated"] = json!(true);
+    }
     audit::record(
         tx,
         NewAuditEntry {
             actor_staff_id: Some(actor.staff_id),
             action: "student.created".into(),
             entity: "student".into(),
-            entity_id: Some(student.id),
-            detail: json!({ "contacts": contacts.len() }),
+            entity_id: Some(id),
+            detail,
         },
     )
     .await?;
-    get(tx, student.id).await
+    Ok(id)
 }
 
 /// One student with their contacts.
@@ -285,14 +313,15 @@ pub async fn update(
 ) -> Result<StudentDetail> {
     actor.require(Capability::ManageStudents)?;
     let name = clean_name(&edit.name)?;
-    check_birth_date(edit.date_of_birth)?;
+    let today = tx.studio_today().await?;
+    check_dates(edit.date_of_birth, edit.joined_on, today)?;
     let notes = clean_notes(edit.notes)?;
 
     let before = get(tx, id).await?.student;
     sqlx::query(
         "UPDATE students
             SET name = $2, date_of_birth = $3, branch_id = $4, status = $5, notes = $6,
-                updated_at = now()
+                joined_on = $7, updated_at = now()
           WHERE id = $1",
     )
     .bind(id)
@@ -301,6 +330,7 @@ pub async fn update(
     .bind(edit.branch_id)
     .bind(edit.status)
     .bind(&notes)
+    .bind(edit.joined_on)
     .execute(tx.conn())
     .await?;
 
@@ -331,6 +361,9 @@ pub async fn update(
     }
     if before.notes != notes {
         changed.push("notes");
+    }
+    if before.joined_on != edit.joined_on {
+        changed.push("joined_on");
     }
     if classes_left > 0 {
         detail.insert("classes_left".into(), json!(classes_left));
@@ -501,12 +534,27 @@ fn clean_notes(notes: Option<String>) -> Result<Option<String>> {
     Ok(notes)
 }
 
-fn check_birth_date(dob: Option<Date>) -> Result<()> {
+/// Birth and join dates that could be real, judged by the studio's today.
+pub(crate) fn check_dates(dob: Option<Date>, joined_on: Date, today: Date) -> Result<()> {
     if let Some(d) = dob {
-        let today = OffsetDateTime::now_utc().date();
         if d > today || d.year() < 1900 {
             return Err(Error::Invalid("That date of birth isn't possible.".into()));
         }
+        if joined_on < d {
+            return Err(Error::Invalid(
+                "The joining date can't be before they were born.".into(),
+            ));
+        }
+    }
+    if joined_on > today {
+        return Err(Error::Invalid(
+            "The joining date can't be in the future.".into(),
+        ));
+    }
+    if joined_on.year() < 2000 {
+        return Err(Error::Invalid(
+            "The joining date has to be in 2000 or later.".into(),
+        ));
     }
     Ok(())
 }
@@ -608,18 +656,21 @@ mod tests {
     }
 
     #[test]
-    fn impossible_birth_dates_are_refused() {
-        let tomorrow = OffsetDateTime::now_utc().date().next_day().unwrap();
-        assert!(check_birth_date(Some(tomorrow)).is_err());
-        assert!(check_birth_date(Some(
-            Date::from_calendar_date(1899, time::Month::December, 31).unwrap()
-        ))
-        .is_err());
-        assert!(check_birth_date(Some(
-            Date::from_calendar_date(2015, time::Month::June, 1).unwrap()
-        ))
-        .is_ok());
-        assert!(check_birth_date(None).is_ok());
+    fn impossible_birth_and_join_dates_are_refused() {
+        let today = Date::from_calendar_date(2026, time::Month::November, 23).unwrap();
+        let day = |y, m, d| Date::from_calendar_date(y, m, d).unwrap();
+        use time::Month::*;
+        let tomorrow = today.next_day().unwrap();
+        assert!(check_dates(Some(tomorrow), today, today).is_err());
+        assert!(check_dates(Some(day(1899, December, 31)), today, today).is_err());
+        assert!(check_dates(Some(day(2015, June, 1)), today, today).is_ok());
+        assert!(check_dates(None, today, today).is_ok());
+        // Backdating is fine; the future and the distant past aren't.
+        assert!(check_dates(None, day(2024, March, 3), today).is_ok());
+        assert!(check_dates(None, tomorrow, today).is_err());
+        assert!(check_dates(None, day(1999, December, 31), today).is_err());
+        // Joining before being born isn't.
+        assert!(check_dates(Some(day(2015, June, 1)), day(2014, June, 1), today).is_err());
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { BackdatedPill } from "@/components/backdated-pill";
 import { TakeOutButton } from "@/components/take-out-button";
 import { getBatch, getMe, getSummary, listBranches, listPlans, listRooms, listStaff } from "@/lib/api-server";
 import { WEEKDAY_LONG, formatDate, formatRupees } from "@/lib/format";
@@ -128,7 +129,11 @@ export default async function ClassPage({ params }: PageProps<"/classes/[id]">) 
                     )}
                     <span className="muted text-[13px]">
                       {r.plan_name ?? "Pays with class credits"}
+                      {r.starts_on > summary.today ? `, starts ${formatDate(r.starts_on)}` : `, since ${formatDate(r.starts_on)}`}
                       {r.student_status !== "active" ? `, ${STATUS_LABEL[r.student_status].toLowerCase()}` : ""}
+                    </span>
+                    <span className="mt-1 inline-flex">
+                      <BackdatedPill date={r.starts_on} enteredOn={r.entered_on} />
                     </span>
                   </span>
                   {manageStudents ? <TakeOutButton enrollmentId={r.enrollment_id} name={r.student_name} /> : null}

@@ -3,8 +3,9 @@ import type { NextRequest } from "next/server";
 import {
   apiTarget,
   FORWARDED_REQUEST_HEADERS,
-  MAX_BODY_BYTES,
+  maxBodyBytes,
   pickHeaders,
+  readCapped,
   RETURNED_RESPONSE_HEADERS,
 } from "@/lib/bff";
 import { apiOrigin } from "@/lib/env";
@@ -24,16 +25,18 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/[...path]">
     return problem(404, "not_found", "That doesn't exist.");
   }
 
-  let body: ArrayBuffer | undefined;
+  let body: Uint8Array<ArrayBuffer> | undefined;
   if (request.method !== "GET" && request.method !== "HEAD") {
+    const limit = maxBodyBytes(path);
     const declared = Number(request.headers.get("content-length") ?? "0");
-    if (declared > MAX_BODY_BYTES) {
+    if (declared > limit) {
       return problem(413, "too_large", "That request is too large.");
     }
-    body = await request.arrayBuffer();
-    if (body.byteLength > MAX_BODY_BYTES) {
+    const read = await readCapped(request.body, limit);
+    if (read === null) {
       return problem(413, "too_large", "That request is too large.");
     }
+    body = read as Uint8Array<ArrayBuffer>;
   }
 
   let upstream: Response;

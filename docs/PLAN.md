@@ -38,8 +38,9 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [x] Instructors see their own classes' students, not the whole list
 - [x] Dashboard: timetable, add and edit classes, prices, rosters, student classes and credits, rooms
 - [ ] Rename a contact; merge two contacts that turn out to be one person
-- [ ] Excel import with duplicate detection by phone number
-- [ ] `students.joined_on` defaults to the studio's date, not the server's
+- [x] Excel and CSV import with a preview, duplicate detection by name and phone, and safe re-import
+- [x] `students.joined_on` set from the studio's date; join dates and class starts can be backdated, marked with a pill
+- [ ] Import: a Class column that also puts each student in that class
 
 ## 2. Attendance and bookings
 

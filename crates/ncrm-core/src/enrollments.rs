@@ -30,6 +30,9 @@ pub struct StudentEnrollment {
     pub plan_price_paise: Option<i64>,
     pub starts_on: Date,
     pub ended_on: Option<Date>,
+    /// The studio's date when this enrollment was entered. `starts_on`
+    /// earlier than this means it was backdated.
+    pub entered_on: Date,
     #[sqlx(skip)]
     pub slots: Vec<Slot>,
 }
@@ -48,7 +51,7 @@ pub async fn for_student(tx: &mut TenantTx, student_id: Uuid) -> Result<Vec<Stud
     let mut rows = sqlx::query_as::<_, StudentEnrollment>(
         "SELECT e.id, e.batch_id, b.name AS batch_name, b.style, br.name AS branch_name,
                 e.plan_id, p.name AS plan_name, p.price_paise AS plan_price_paise,
-                e.starts_on, e.ended_on
+                e.starts_on, e.ended_on, studio_date(e.org_id, e.created_at) AS entered_on
            FROM enrollments e
            JOIN batches b ON b.org_id = e.org_id AND b.id = e.batch_id
            JOIN branches br ON br.org_id = b.org_id AND br.id = b.branch_id
@@ -210,6 +213,7 @@ pub async fn enroll(
                 "student_id": student_id,
                 "batch_id": new.batch_id,
                 "plan_id": new.plan_id,
+                "backdated": starts_on < today,
             }),
         },
     )

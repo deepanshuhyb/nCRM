@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { ContactFields, emptyContact, type ContactDraft } from "@/components/contact-fields";
+import { BackdatableDate } from "@/components/backdatable-date";
 import { ApiError, apiSend } from "@/lib/api-client";
 import { STATUS_LABEL, type StudentStatus } from "@/lib/types";
 
@@ -112,9 +113,20 @@ type EditableStudent = {
   branch_id: string | null;
   status: StudentStatus;
   notes: string | null;
+  joined_on: string;
+  entered_on: string;
 };
 
-export function EditStudentForm({ student, branches }: { student: EditableStudent; branches: { id: string; name: string }[] }) {
+export function EditStudentForm({
+  student,
+  branches,
+  today,
+}: {
+  student: EditableStudent;
+  branches: { id: string; name: string }[];
+  /** The studio's date, not the browser's: they differ around midnight. */
+  today: string;
+}) {
   const router = useRouter();
   const [form, setForm] = useState({
     name: student.name,
@@ -122,17 +134,17 @@ export function EditStudentForm({ student, branches }: { student: EditableStuden
     branch_id: student.branch_id ?? "",
     status: student.status,
     notes: student.notes ?? "",
+    joined_on: student.joined_on,
   });
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
-
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSaved(false);
     if (!form.name.trim()) return setError("The name can't be empty.");
+    if (!form.joined_on) return setError("Add the date they joined.");
     setBusy(true);
     try {
       await apiSend("PUT", `/students/${student.id}`, {
@@ -141,6 +153,7 @@ export function EditStudentForm({ student, branches }: { student: EditableStuden
         branch_id: form.branch_id || null,
         status: form.status,
         notes: form.notes.trim() || null,
+        joined_on: form.joined_on,
       });
       setSaved(true);
       router.refresh();
@@ -180,6 +193,14 @@ export function EditStudentForm({ student, branches }: { student: EditableStuden
             </label>
             <input id="edit-dob" type="date" className="field" value={form.date_of_birth} max={today} min="1900-01-01" onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} />
           </div>
+          <BackdatableDate
+            id="edit-joined"
+            label="Joined on"
+            value={form.joined_on}
+            onChange={(joined_on) => setForm({ ...form, joined_on })}
+            max={today}
+            enteredOn={student.entered_on}
+          />
           <div>
             <label htmlFor="edit-branch" className="field-label">
               Branch

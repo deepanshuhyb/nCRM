@@ -16,6 +16,7 @@ pub mod classes;
 pub mod enrollments;
 pub mod error;
 pub mod extract;
+pub mod import;
 pub mod plans;
 pub mod security;
 pub mod sign_in;
@@ -116,6 +117,16 @@ pub fn router(state: AppState) -> Router {
         .route("/staff", get(team::list).post(team::hire))
         .route("/staff/{id}", put(team::update))
         .route("/students", get(students::list).post(students::create))
+        // Spreadsheets are bigger than any JSON body: these two routes
+        // override the 64 KB limit set for everything below.
+        .route(
+            "/students/import/preview",
+            post(import::preview).layer(DefaultBodyLimit::max(import::IMPORT_BODY_LIMIT)),
+        )
+        .route(
+            "/students/import",
+            post(import::commit).layer(DefaultBodyLimit::max(import::IMPORT_BODY_LIMIT)),
+        )
         .route("/students/{id}", get(students::get).put(students::update))
         .route("/students/{id}/contacts", post(students::add_contact))
         .route(

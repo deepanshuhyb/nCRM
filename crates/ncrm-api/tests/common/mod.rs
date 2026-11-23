@@ -126,6 +126,42 @@ impl TestApp {
         }
     }
 
+    /// A request with a raw (non-JSON) body, such as an uploaded file, sent
+    /// from our dashboard's origin.
+    pub async fn call_raw(
+        &self,
+        path: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+        cookie: Option<&str>,
+    ) -> Reply {
+        let mut req = Request::builder()
+            .method(Method::POST)
+            .uri(path)
+            .header(header::ORIGIN, DASHBOARD)
+            .header(header::CONTENT_TYPE, content_type);
+        if let Some(c) = cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        let res = self
+            .router
+            .clone()
+            .oneshot(req.body(Body::from(bytes)).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let json = serde_json::from_slice(&bytes)
+            .unwrap_or(Value::String(String::from_utf8_lossy(&bytes).into_owned()));
+        Reply {
+            status,
+            json,
+            set_cookie: None,
+            headers,
+        }
+    }
+
     /// Wait for the background sender to deliver a code to `phone`.
     pub async fn code_for(&self, phone_as_typed: &str) -> String {
         let phone = ncrm_core::phone::normalize(phone_as_typed).unwrap();

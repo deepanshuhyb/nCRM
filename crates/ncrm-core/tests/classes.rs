@@ -165,6 +165,7 @@ async fn student(pool: &PgPool, s: &Studio, name: &str) -> Uuid {
             date_of_birth: None,
             branch_id: Some(s.north.id),
             notes: None,
+            joined_on: None,
             contacts: vec![],
         },
     )
@@ -660,6 +661,12 @@ async fn enrolling_respects_capacity_status_and_plan_kind(pool: PgPool) {
     let r = batches::update(&mut t, actor(&s.owner), id, shrink).await;
     assert!(matches!(r, Err(Error::Invalid(_))), "{r:?}");
 
+    // A backdated start is kept and visible as backdated.
+    let today = t.studio_today().await.unwrap();
+    let mine = enrollments::for_student(&mut t, a).await.unwrap();
+    assert_eq!(mine[0].entered_on, today);
+    assert!(mine[0].starts_on <= mine[0].entered_on);
+
     // Leaving frees the place.
     let theirs = enrollments::for_student(&mut t, b).await.unwrap();
     let ended = enrollments::end(&mut t, actor(&s.front_desk), theirs[0].id)
@@ -690,12 +697,14 @@ async fn students_on_a_break_or_gone_arent_enrolled_and_leaving_ends_classes(poo
         .await
         .unwrap();
 
+    let today = t.studio_today().await.unwrap();
     let set_status = |status| StudentEdit {
         name: "Aarav".into(),
         date_of_birth: None,
         branch_id: Some(s.north.id),
         status,
         notes: None,
+        joined_on: today,
     };
     // A break keeps the place.
     students::update(
@@ -1060,4 +1069,48 @@ async fn classes_plans_and_credits_never_cross_studios(pool: PgPool) {
         matches!(&r, Err(Error::Invalid(m)) if m == "Choose someone on your team."),
         "{r:?}"
     );
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn a_class_start_can_be_backdated_up_to_a_year(pool: PgPool) {
+    let s = studio(&pool, "alpha").await;
+    let kid = student(&pool, &s, "Aarav").await;
+    let mut t = tx(&pool, &s).await;
+    let today = t.studio_today().await.unwrap();
+    let hiphop = batches::create(&mut t, actor(&s.owner), class(&s, "Hip-hop", mon_wed_6pm()))
+        .await
+        .unwrap();
+    let join = |starts_on| NewEnrollment {
+        batch_id: hiphop.summary.batch.id,
+        plan_id: None,
+        starts_on: Some(starts_on),
+    };
+    let too_old = enrollments::enroll(
+        &mut t,
+        actor(&s.front_desk),
+        kid,
+        join(today - Duration::days(400)),
+    )
+    .await;
+    assert!(matches!(too_old, Err(Error::Invalid(_))), "{too_old:?}");
+
+    let theirs = enrollments::enroll(
+        &mut t,
+        actor(&s.front_desk),
+        kid,
+        join(today - Duration::days(45)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(theirs[0].starts_on, today - Duration::days(45));
+    assert_eq!(
+        theirs[0].entered_on, today,
+        "backdated: started before it was entered"
+    );
+    let roster = batches::get(&mut t, actor(&s.owner), hiphop.summary.batch.id)
+        .await
+        .unwrap()
+        .roster
+        .unwrap();
+    assert!(roster[0].starts_on < roster[0].entered_on);
 }

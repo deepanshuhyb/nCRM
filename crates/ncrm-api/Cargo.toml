@@ -23,4 +23,5 @@ tower = "0.5.3"
 
 [dev-dependencies]
 http-body-util = "0.1.5"
+rust_xlsxwriter = "0.104.0"
 tower = { version = "0.5.3", features = ["util"] }

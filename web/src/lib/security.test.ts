@@ -167,3 +167,25 @@ describe("class and money helpers", async () => {
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
   });
 });
+
+describe("upload limits at the gateway", async () => {
+  const { maxBodyBytes, readCapped, MAX_BODY_BYTES, MAX_UPLOAD_BYTES } = await import("./bff");
+  const stream = (sizes: number[]) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const n of sizes) c.enqueue(new Uint8Array(n));
+        c.close();
+      },
+    });
+  it("gives only the import paths more room", () => {
+    expect(maxBodyBytes(["students", "import"])).toBe(MAX_UPLOAD_BYTES);
+    expect(maxBodyBytes(["students", "import", "preview"])).toBe(MAX_UPLOAD_BYTES);
+    expect(maxBodyBytes(["students"])).toBe(MAX_BODY_BYTES);
+    expect(maxBodyBytes(["students", "0b8f3e1c-1f2a-4c3d-9e8f-123456789abc"])).toBe(MAX_BODY_BYTES);
+  });
+  it("counts the bytes that arrive instead of trusting the header", async () => {
+    expect((await readCapped(stream([10, 20]), 30))?.byteLength).toBe(30);
+    expect(await readCapped(stream([10, 20, 1]), 30)).toBeNull();
+    expect((await readCapped(null, 30))?.byteLength).toBe(0);
+  });
+});

@@ -105,6 +105,14 @@ Every block is a link whose accessible name says the class, day, time,
 place, teacher and how full it is, and the same text is the hover title,
 since narrow blocks truncate.
 
+## Backdated dates
+
+A join date or class start set earlier than the day it was entered carries
+a quiet "Backdated" tag next to the date, with "Entered on …" as its hover
+title and screen-reader text. It's information, not a warning, so it uses
+the quiet tag, never the attention colour. Forms show the tag live as soon
+as a past date is picked, so staff see what they're doing.
+
 ## Styles and Tailwind
 
 Our classes (`.glass`, `.row`, `.btn`, `.field`, `.tag`, …) live in

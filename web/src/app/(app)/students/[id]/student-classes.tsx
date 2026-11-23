@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
+import { BackdatableDate } from "@/components/backdatable-date";
 import { ApiError, apiSend } from "@/lib/api-client";
+import { addDays } from "@/lib/format";
 
 function message(err: unknown) {
   return err instanceof ApiError ? err.message : "Something went wrong. Try again.";
@@ -90,12 +92,15 @@ export function JoinClassForm({
             ))}
           </select>
         </div>
-        <div>
-          <label htmlFor="join-start" className="field-label">
-            From
-          </label>
-          <input id="join-start" type="date" className="field" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
-        </div>
+        <BackdatableDate
+          id="join-start"
+          label="From"
+          value={startsOn}
+          onChange={setStartsOn}
+          max={addDays(today, 366)}
+          enteredOn={today}
+          min={addDays(today, -366)}
+        />
       </div>
       <p role="alert" className="field-error m-0 min-h-[1.2em]">
         {error}

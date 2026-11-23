@@ -51,3 +51,27 @@ export async function apiSend<T>(
     err?.message ?? "Something went wrong. Try again.",
   );
 }
+
+/**
+ * Send a file as the raw request body (spreadsheet import). The type is
+ * set from the file, falling back to a generic binary type; the API checks
+ * the actual bytes, not the name or the type.
+ */
+export async function apiUpload<T>(path: `/${string}`, file: File): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { accept: "application/json", "content-type": file.type || "application/octet-stream" },
+      body: file,
+    });
+  } catch {
+    throw new ApiError(0, "offline", "Can't reach the server. Check your connection and try again.");
+  }
+  const data = (await res.json().catch(() => null)) as T | ApiErrorBody | null;
+  if (res.ok) return data as T;
+  const err = (data as ApiErrorBody | null)?.error;
+  throw new ApiError(res.status, err?.code ?? "unknown", err?.message ?? "Something went wrong. Try again.");
+}

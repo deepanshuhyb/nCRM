@@ -58,6 +58,7 @@ crates/
     src/plans.rs     prices: monthly fees, packs, drop-ins
     src/enrollments.rs  putting students in classes and taking them out
     src/credits.rs   class credits from packs and drop-ins
+    src/import.rs    student lists from .xlsx/.csv: safe reading, preview, commit
     src/validate.rs  shared input checks with plain messages
     src/phone.rs     phone number normalization
   ncrm-api/     HTTP layer (Axum)
@@ -73,6 +74,7 @@ crates/
     src/classes.rs   /rooms, /batches
     src/plans.rs     /plans
     src/enrollments.rs  /students/{id}/enrollments, /enrollments, credits
+    src/import.rs    /students/import: raw file uploads with their own size limit
   ncrm-worker/  background jobs (stub)
 migrations/     SQL, applied in order, embedded into the binaries
 web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
@@ -82,6 +84,8 @@ web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
   src/app/(app)/             the signed-in app: shell, home, branches,
                              classes (timetable, prices), students, team
   src/components/timetable.tsx  the week grid (server-rendered, no JS)
+  public/templates/          the student import template (.xlsx, .csv)
+scripts/make_student_template.py  rebuilds that template
   src/lib/api-server.ts      server-side API calls (server-only)
   src/lib/api-client.ts      browser-side API calls through /api
   src/lib/bff.ts, csp.ts, safe-redirect.ts   security helpers (unit-tested)
@@ -195,6 +199,13 @@ The API server runs on UTC. "Today" for a studio comes from
 default). Class times are wall-clock `time` values, sent as `"18:00"`.
 Dates are `"2026-11-23"`.
 
+Join dates and class start dates can be set in the past. The API returns
+`entered_on` next to them: the studio's date when the row was created,
+from the SQL function `studio_date(org_id, created_at)`. A date earlier
+than `entered_on` was backdated, and the dashboard marks it with a
+Backdated pill. Nothing extra is stored: it's worked out from
+`created_at`, which nobody can change.
+
 ## The dashboard
 
 ### Two ways the dashboard reaches the API
@@ -232,7 +243,10 @@ Browser ──POST /api/branches──▶ Next.js route handler app/api/[...path
 
 The gateway only forwards paths whose first segment is on the allowlist in
 `src/lib/bff.ts`: `auth`, `batches`, `branches`, `enrollments`, `plans`,
-`rooms`, `staff`, `students`, `summary`. A new
+`rooms`, `staff`, `students`, `summary`. Bodies are read with a running
+byte count (`readCapped`), so a missing or false Content-Length can't
+push past the limit: 64 KB, or 2 MB for `students/import`
+(`maxBodyBytes`). A new
 top-level API path is unreachable from the browser until it is added there.
 
 So the browser only ever talks to one origin: the session cookie is
@@ -268,7 +282,8 @@ referrer policy, permissions policy, HSTS in production) are set in
 | `/classes/[id]` | everyone | Schedule, how full, roster (teacher of the class and front desk), add or take out students, edit and archive |
 | `/classes/plans` | manage students | Prices by kind; owners and managers add and edit |
 | `/branches` | (now also) | Rooms per branch, added and edited in place |
-| `/students/[id]` | (now also) | Their classes, put in a class, class credits, sell a pack, give or take back credits |
+| `/students/[id]` | (now also) | Their classes, put in a class, class credits, sell a pack, give or take back credits; Backdated pills on the join date and class starts |
+| `/students/import` | manage students | Choose a file and a default branch; see every row's fate (added, already here, repeated, can't be added, added with a note); add them |
 
 Navigation shows only the pages the role can open (built from the
 capabilities in `/auth/me`). That is a convenience: a page opened directly
@@ -354,6 +369,15 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `GET /students/{id}/credits` | manage students | Usable classes, next expiry, every lot |
 | `POST /students/{id}/credits/sell` | manage fees | Sell a pack or drop-in |
 | `POST /students/{id}/credits/give`, `/take-back` | manage classes | Free classes or take some back, with a reason |
+| `POST /students/import/preview?branch_id=` | manage students | Body: the .xlsx or .csv file. What would happen to every row; writes nothing |
+| `POST /students/import?branch_id=` | manage students | Same file: adds the ready rows in one transaction, skips the rest |
+
+The two import routes take the file as the raw body, up to 2 MB, with
+Content-Type one of the spreadsheet types (or `application/octet-stream`).
+Every other route keeps the 64 KB limit. The types a plain HTML form can
+send across sites (`text/plain`, `multipart/form-data`,
+`application/x-www-form-urlencoded`) are refused, on top of the origin
+check and the SameSite cookie.
 
 Updates are `PUT` with the whole object, not `PATCH`. With `PATCH`, a
 missing `branch_id` and `"branch_id": null` ("clear it") are easy to mix
@@ -460,6 +484,9 @@ Those need "manage classes", a reason, and leave an audit entry.
 | Credits spent twice or invented | Append-only ledger, balance trigger with a per-lot lock | migration 0004, `credits.rs` |
 | Free classes handed out quietly | Owners and managers only, reason required, audited | `credits::give` |
 | Error text showing internals | Constraint names and parser messages turned into sentences | `ncrm_core::error`, `extract.rs` |
+| A booby-trapped spreadsheet | 2 MB cap; zip entries actually unpacked under a 30 MB cap before parsing; cells streamed with row and column caps; old .xls refused; parsing on a blocking thread | `import.rs` |
+| A cross-site form posting a file | Upload routes accept only spreadsheet content types | `ncrm-api/src/import.rs` |
+| Importing the same list twice | Rows already in the studio are skipped; imports take a per-studio lock | `import.rs` |
 | Guessing sign-in codes | HMAC storage, 5 attempts per code, 5 codes per phone per hour, per-IP limits | `auth.rs`, `security.rs` |
 | Finding out who is staff | Identical answers and timing for every number | `auth.rs`, `sign_in.rs` |
 | Stolen database leaking sessions | Only SHA-256 of tokens stored | `platform.sessions` |
@@ -519,11 +546,13 @@ One VPS to start:
 - `ncrm-core/tests/`: rules directly (isolation between studios, sign-in
   abuse cases, team and student rules in `people.rs`, classes, plans,
   enrollments and credits in `classes.rs`, including races between two
-  transactions).
+  transactions; `import.rs` reads a deliberately messy Excel sheet, a zip
+  bomb, far-apart cells, row limits, and the template we hand out).
 - `ncrm-api/tests/`: the real router in memory, with a `Capture` code
   sender; `security_api.rs` attacks each protection; `people_api.rs` runs
   students and team through each role, bad input and another studio;
-  `classes_api.rs` does the same for classes, prices and credits.
+  `classes_api.rs` does the same for classes, prices and credits;
+  `import_api.rs` covers the upload routes' types, sizes and roles.
 - `web/src/lib/security.test.ts` (Vitest): redirects, gateway paths,
   header filtering, CSP, and the phone/age/date formatting helpers.
 - The Rust suite also passes as a non-superuser database owner, which is

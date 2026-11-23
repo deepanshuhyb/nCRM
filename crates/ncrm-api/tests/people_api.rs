@@ -66,13 +66,16 @@ async fn front_desk_runs_students_end_to_end(pool: PgPool) {
         .call(
             Method::PUT,
             &format!("/students/{id}"),
-            Some(json!({ "name": "Aarav S.", "date_of_birth": null, "branch_id": null, "status": "paused", "notes": null })),
+            Some(json!({ "name": "Aarav S.", "date_of_birth": null, "branch_id": null, "status": "paused", "notes": null, "joined_on": "2024-03-03" })),
             Some(&desk),
         )
         .await;
     assert_eq!(edited.status, StatusCode::OK, "{:?}", edited.json);
     assert_eq!(edited.json["status"], "paused");
     assert!(edited.json["date_of_birth"].is_null());
+    // Backdated: joined before the day the record was entered.
+    assert_eq!(edited.json["joined_on"], "2024-03-03");
+    assert!(edited.json["entered_on"].as_str().unwrap() > "2024-03-03");
 
     let father = contacts[1]["contact_id"].as_str().unwrap();
     let removed = app
@@ -242,7 +245,7 @@ async fn another_studios_students_are_invisible(pool: PgPool) {
         .call(
             Method::PUT,
             &format!("/students/{id}"),
-            Some(json!({ "name": "Taken", "date_of_birth": null, "branch_id": null, "status": "left", "notes": null })),
+            Some(json!({ "name": "Taken", "date_of_birth": null, "branch_id": null, "status": "left", "notes": null, "joined_on": "2024-03-03" })),
             Some(&other),
         )
         .await;

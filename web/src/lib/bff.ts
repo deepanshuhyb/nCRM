@@ -40,6 +40,43 @@ export const RETURNED_RESPONSE_HEADERS = ["content-type", "cache-control", "retr
 /** Largest request body forwarded, matching the API's own limit. */
 export const MAX_BODY_BYTES = 64 * 1024;
 
+/** Spreadsheet uploads (`/students/import...`) may be larger, as in the API. */
+export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 + 4 * 1024;
+
+/** The body limit for a path: uploads get more room, everything else 64 KB. */
+export function maxBodyBytes(segments: string[]): number {
+  return segments[0] === "students" && segments[1] === "import" ? MAX_UPLOAD_BYTES : MAX_BODY_BYTES;
+}
+
+/**
+ * Read a request body, stopping as soon as it passes `limit` bytes. A
+ * declared Content-Length can lie or be missing (chunked uploads), so the
+ * bytes are counted as they arrive instead of trusting the header.
+ */
+export async function readCapped(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array | null> {
+  if (!body) return new Uint8Array(0);
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
+}
+
 const SEGMENT = /^[A-Za-z0-9_-]+$/;
 
 /**

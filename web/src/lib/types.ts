@@ -95,6 +95,8 @@ export type Student = {
   status: StudentStatus;
   notes: string | null;
   joined_on: string;
+  /** The studio's date when the record was entered; later than joined_on means backdated. */
+  entered_on: string;
   created_at: string;
   updated_at: string;
 };
@@ -170,6 +172,7 @@ export type RosterEntry = {
   plan_id: string | null;
   plan_name: string | null;
   starts_on: string;
+  entered_on: string;
 };
 
 /** `roster` is null when the person may not see who's in the class. */
@@ -207,6 +210,7 @@ export type StudentEnrollment = {
   plan_price_paise: number | null;
   starts_on: string;
   ended_on: string | null;
+  entered_on: string;
   slots: Slot[];
 };
 
@@ -228,3 +232,31 @@ export type Credits = {
   next_expiry: { on: string; classes: number } | null;
   lots: CreditLot[];
 };
+
+export type ImportOutcome = "ready" | "already_here" | "repeated" | "cannot_import";
+
+export type ImportPreviewRow = {
+  row: number;
+  name: string;
+  outcome: ImportOutcome;
+  notes: string[];
+  branch_name: string | null;
+  joined_on: string;
+  date_of_birth: string | null;
+  contacts: { name: string; phone: string; relation: Relation }[];
+};
+
+export type ImportPreview = {
+  sheet_name: string | null;
+  columns: { title: string; used_as: string }[];
+  ignored_columns: string[];
+  total: number;
+  ready: number;
+  already_here: number;
+  repeated: number;
+  cannot_import: number;
+  ready_with_notes: number;
+  rows: ImportPreviewRow[];
+};
+
+export type ImportResult = { added: number; skipped: number };

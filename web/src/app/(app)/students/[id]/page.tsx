@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { BackdatedPill } from "@/components/backdated-pill";
 import { NotAllowed } from "@/components/not-allowed";
 import { TakeOutButton } from "@/components/take-out-button";
 import {
@@ -70,7 +71,10 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
             </div>
             <div>
               <dt className="muted text-[13px]">Joined</dt>
-              <dd className="m-0 text-base font-semibold">{formatDate(student.joined_on)}</dd>
+              <dd className="m-0 flex flex-wrap items-center gap-1.5 text-base font-semibold">
+                {formatDate(student.joined_on)}
+                <BackdatedPill date={student.joined_on} enteredOn={student.entered_on} />
+              </dd>
             </div>
             <div>
               <dt className="muted text-[13px]">Contacts</dt>
@@ -135,7 +139,10 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
                       {e.plan_name && e.plan_price_paise !== null
                         ? `${e.plan_name}, ${formatRupees(e.plan_price_paise)} a month`
                         : "Pays with class credits"}
-                      {e.starts_on > summary.today ? `, starts ${formatDate(e.starts_on)}` : ""}
+                      {e.starts_on > summary.today ? `, starts ${formatDate(e.starts_on)}` : `, since ${formatDate(e.starts_on)}`}
+                    </span>
+                    <span className="mt-1 inline-flex">
+                      <BackdatedPill date={e.starts_on} enteredOn={e.entered_on} />
                     </span>
                   </span>
                   <TakeOutButton enrollmentId={e.id} name={student.name} />
@@ -231,7 +238,10 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
           branch_id: student.branch_id,
           status: student.status,
           notes: student.notes,
+          joined_on: student.joined_on,
+          entered_on: student.entered_on,
         }}
+        today={summary.today}
         branches={branches.map((b) => ({ id: b.id, name: b.name }))}
       />
     </div>

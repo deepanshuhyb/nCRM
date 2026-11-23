@@ -4,22 +4,23 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { ContactFields, emptyContact, type ContactDraft } from "@/components/contact-fields";
+import { BackdatableDate } from "@/components/backdatable-date";
 import { ApiError, apiSend } from "@/lib/api-client";
 import type { StudentDetail } from "@/lib/types";
 
 const MAX_CONTACTS = 4;
 
-export function NewStudentForm({ branches }: { branches: { id: string; name: string }[] }) {
+export function NewStudentForm({ branches, today }: { branches: { id: string; name: string }[]; today: string }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [dob, setDob] = useState("");
   const [branchId, setBranchId] = useState(branches.length === 1 ? branches[0].id : "");
   const [notes, setNotes] = useState("");
+  const [joinedOn, setJoinedOn] = useState(today);
   const [contacts, setContacts] = useState<ContactDraft[]>([emptyContact()]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const today = new Date().toISOString().slice(0, 10);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -37,6 +38,7 @@ export function NewStudentForm({ branches }: { branches: { id: string; name: str
         date_of_birth: dob || null,
         branch_id: branchId || null,
         notes: notes.trim() || null,
+        joined_on: joinedOn || today,
         contacts: filled.map((c, i) => ({ ...c, is_primary: i === 0 })),
       });
       router.push(`/students/${created.id}`);
@@ -67,13 +69,21 @@ export function NewStudentForm({ branches }: { branches: { id: string; name: str
             required
           />
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <label htmlFor="student-dob" className="field-label">
               Date of birth <span className="muted font-normal">(optional)</span>
             </label>
             <input id="student-dob" type="date" className="field" value={dob} max={today} min="1900-01-01" onChange={(e) => setDob(e.target.value)} />
           </div>
+          <BackdatableDate
+            id="student-joined"
+            label="Joined on"
+            value={joinedOn}
+            onChange={setJoinedOn}
+            max={today}
+            enteredOn={today}
+          />
           <div>
             <label htmlFor="student-branch" className="field-label">
               Branch

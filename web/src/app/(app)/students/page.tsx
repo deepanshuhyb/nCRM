@@ -53,9 +53,14 @@ export default async function StudentsPage({ searchParams }: PageProps<"/student
               : `${page.total} ${page.total === 1 ? "student" : "students"}${q ? ` matching "${q}"` : ""}.`}
           </p>
         </div>
-        <Link href="/students/new" className="btn btn-primary">
-          Add student
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/students/import" className="btn btn-ghost">
+            Import from Excel
+          </Link>
+          <Link href="/students/new" className="btn btn-primary">
+            Add student
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -89,7 +94,14 @@ export default async function StudentsPage({ searchParams }: PageProps<"/student
 
       {page.items.length === 0 ? (
         <section className="glass p-7">
-          <p className="m-0 text-base font-semibold">{q ? "Try part of the name, or 4 or more digits of a phone number." : "Add your first student to get started."}</p>
+          <p className="m-0 text-base font-semibold">
+            {q ? "Try part of the name, or 4 or more digits of a phone number." : "Add your first student, or bring in your list from Excel."}
+          </p>
+          {q ? null : (
+            <Link href="/students/import" className="btn btn-ghost mt-4">
+              Import from Excel
+            </Link>
+          )}
         </section>
       ) : (
         <section aria-label="Student list" className="glass overflow-hidden p-2">

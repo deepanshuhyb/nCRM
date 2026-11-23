@@ -16,6 +16,144 @@ Template:
 
 ---
 
+## 2026-11-23: Reading a spreadsheet from a stranger
+
+**Context:** importing a studio's existing student list from Excel.
+
+**What wasn't obvious:** an uploaded file is attacker-controlled input,
+and spreadsheets have two traps beyond "too big":
+1. An .xlsx is a zip. A 100 KB zip can unpack to gigabytes (a "zip
+   bomb"), and the sizes written inside a zip can lie.
+2. Spreadsheet readers usually hand back a sheet as a rectangle of cells
+   from the first used cell to the last. Two cells, at A1 and at row
+   1,000,000, column 16,000, make a "rectangle" of sixteen billion cells,
+   from a file of a few kilobytes.
+
+Old binary .xls files have the second problem with no way to stream them,
+and password-protected .xlsx files use the same container as .xls.
+
+**What we did:** in `ncrm_core::import`:
+- 2 MB per upload, at most 2,000 students and 40 columns.
+- Before the spreadsheet library sees an .xlsx, every zip entry is
+  actually decompressed into nothing, counting real bytes, and the file is
+  refused past 30 MB in total. Counting what comes out can't be fooled by
+  what the zip claims.
+- The sheet is read cell by cell (`worksheet_cells_reader`), never as a
+  rectangle. A cell past column 40 is ignored; one past row 2,010 means
+  "too many rows" and reading stops.
+- .xls and password-protected files are refused with a plain way out
+  ("save it as .xlsx without a password").
+- CSV must be UTF-8 (Excel's "CSV UTF-8"); semicolon and tab separated
+  files, which Excel writes in some regions, are detected from the first
+  line.
+- The file type is decided from the first bytes, not the name or the
+  type the browser claims. Parsing runs on a blocking thread so it can't
+  stall other requests.
+
+Tests build a real zip bomb (40 MB of zeros, a few KB compressed) and a
+sheet with cells a million rows apart, and check both are refused quickly.
+
+**Consequences:** any future upload (photos, documents) needs the same
+thinking: cap the input, cap what it expands to, and stream.
+
+## 2026-11-23: Import is a preview, then the same thing for real
+
+**Context:** what happens to each row of an imported sheet.
+
+**What wasn't obvious:** real sheets are messy: a title row above the
+column titles, phone numbers stored as numbers (9876543210.0), dates
+both as Excel dates and as typed text, the same child twice, a sibling
+with the mother's number typed differently, a branch spelled "hauz khas ",
+and students who are already in ncrm. An import that half-works, or that
+duplicates everyone when run twice, is worse than none.
+
+**What we did:** `preview` and `commit` run the same planning code on the
+same file. Preview writes nothing and tells the person what will happen to
+every row: added, already here (same name and phone, or same name when the
+row has no phone), repeated in the file, can't be added (no name), or
+added with a note ("there's no branch called Delhi, so Hauz Khas was
+used"). Commit adds the ready rows in one transaction (all or nothing),
+under a per-studio lock so two imports can't both add the same people.
+Running the same file again adds nobody.
+
+Reading rules worth knowing:
+- Column titles are matched loosely ("Student Name", "Mobile No",
+  "Mother's Phone", "D.O.B", "Date of Joining", "Centre"), in the first
+  ten rows, on the first sheet that has a name column.
+- Typed dates are day first (04/03/2015 is 4 March), as in India; a date
+  that only works month first (03/25/2015) is read that way. A number in a
+  date column is treated as Excel's day count.
+- A single phone column next to a "Mother's name" column is the mother's
+  number. A child's (under 18) unnamed number is "Parent of …"; an adult's
+  is their own.
+- Every created student is audited with `"via": "import"`, plus one
+  `students.imported` entry with the counts.
+
+The template we hand out (`web/public/templates`, built by
+`scripts/make_student_template.py`) is read back by a test, so the two
+can't drift apart.
+
+**Consequences:** a "Class" column that also puts students in classes is
+the natural next step (in `docs/PLAN.md`).
+
+## 2026-11-23: Uploading a file without opening a CSRF hole
+
+**Context:** the import routes take the file as the raw request body.
+
+**What wasn't obvious:** the API's defence against cross-site request
+forgery partly leaned on "every body is JSON", which a plain HTML form on
+another site can't send. A route that accepts a raw file body loosens
+that. And the API's 64 KB body limit, right for JSON, is far too small for
+a spreadsheet.
+
+**What we did:** the upload routes accept only the content types browsers
+use for .xlsx and .csv files (and `application/octet-stream`). The three
+types a cross-site form can send are refused, before the origin check and
+SameSite cookie even matter. The 2 MB limit is set on those two routes
+alone (`DefaultBodyLimit` on the route overrides the router-wide one, so
+everything else keeps 64 KB). A test proves both: a JSON body over 64 KB is
+still refused, while a 200 KB CSV gets through to be judged on its
+contents.
+
+The dashboard's gateway gets the same per-path limit and now counts bytes
+as they arrive (`readCapped`) instead of trusting Content-Length, which
+can be missing or false.
+
+**Consequences:** new upload routes go on the same short list, with their
+own limit, and nowhere else.
+
+## 2026-11-23: Join dates, backdating, and repairing old dates
+
+**Context:** the join date was off by a day for anyone added between
+midnight and 5:30 am, and studios need to enter students who joined
+before ncrm existed.
+
+**What wasn't obvious:** the column's default was `CURRENT_DATE`, the
+database server's date in UTC. Fixing the default alone would leave the
+old wrong dates. And "backdated" needs a reference point that can't be
+edited.
+
+**What we did:** migration 0005 adds `studio_date(org_id, timestamp)`
+(the date a moment fell on, in the studio's time zone), repairs existing
+rows, and drops the default so the application must always set the date
+(from `studio_today()` or a date staff typed in). The repair is safe
+because nobody could set `joined_on` before this migration: every existing
+value was the default, i.e. the UTC date of `created_at`. Only rows where
+that's still true are touched, and they get the studio-local date of
+`created_at` instead. A planted student "created" at 01:30 in India moved
+from 22 to 23 November in the live check; nobody else changed.
+
+Backdating isn't a stored flag. The API returns `entered_on`
+(`studio_date(org_id, created_at)`) beside the join date and class start
+date, and the dashboard shows a Backdated pill when the date is earlier.
+`created_at` is set by the database and never edited, so the pill can't
+be faked or forgotten. Join dates can't be in the future, before 2000 or
+before the date of birth; class starts can be up to a year either way.
+Backdated creations are also flagged in the audit log.
+
+**Consequences:** reports can tell "joined in March" apart from "entered
+in March", which matters once fees and attendance depend on the join date.
+
 ## 2026-11-23: A CHECK that comes out NULL counts as passed
 
 **Context:** the `plans` table, where a pack needs a class count and a
@@ -130,10 +268,9 @@ sold at 1 am would expire a day early.
 classes code uses it, and `/summary` returns it so the dashboard marks
 the right day as today without guessing.
 
-**Consequences:** `students.joined_on` still defaults to `CURRENT_DATE`
-(written before this existed); it can be off by one for sign-ups between
-midnight and 5:30 am. Worth fixing with the next migration that touches
-students.
+**Consequences:** `students.joined_on` used to default to `CURRENT_DATE`
+and could be off by one for sign-ups between midnight and 5:30 am. Fixed
+in migration 0005 (see "Join dates, backdating, and repairing old dates").
 
 ## 2026-11-23: Times of day travel as "18:00"
 

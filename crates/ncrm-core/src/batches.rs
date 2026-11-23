@@ -109,6 +109,9 @@ pub struct RosterEntry {
     pub plan_id: Option<Uuid>,
     pub plan_name: Option<String>,
     pub starts_on: Date,
+    /// The studio's date when they were put in the class; a `starts_on`
+    /// earlier than this was backdated.
+    pub entered_on: Date,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -672,7 +675,8 @@ async fn attach_slots(tx: &mut TenantTx, batches: &mut [BatchSummary]) -> Result
 async fn roster(tx: &mut TenantTx, batch_id: Uuid) -> Result<Vec<RosterEntry>> {
     let rows = sqlx::query_as::<_, RosterEntry>(
         "SELECT e.id AS enrollment_id, s.id AS student_id, s.name AS student_name,
-                s.status AS student_status, e.plan_id, p.name AS plan_name, e.starts_on
+                s.status AS student_status, e.plan_id, p.name AS plan_name, e.starts_on,
+                studio_date(e.org_id, e.created_at) AS entered_on
            FROM enrollments e
            JOIN students s ON s.org_id = e.org_id AND s.id = e.student_id
            LEFT JOIN plans p ON p.org_id = e.org_id AND p.id = e.plan_id

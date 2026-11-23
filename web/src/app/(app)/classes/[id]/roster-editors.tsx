@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
+import { BackdatableDate } from "@/components/backdatable-date";
 import { ApiError, apiSend } from "@/lib/api-client";
+import { addDays } from "@/lib/format";
 import type { Page, StudentListItem } from "@/lib/types";
 
 /** Find a student by name or phone digits and put them in this class. */
@@ -151,12 +153,15 @@ export function AddToClass({
             ))}
           </select>
         </div>
-        <div>
-          <label htmlFor="roster-start" className="field-label">
-            From
-          </label>
-          <input id="roster-start" type="date" className="field" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
-        </div>
+        <BackdatableDate
+          id="roster-start"
+          label="From"
+          value={startsOn}
+          onChange={setStartsOn}
+          max={addDays(today, 366)}
+          enteredOn={today}
+          min={addDays(today, -366)}
+        />
       </div>
       <p role="alert" className="field-error m-0 min-h-[1.2em]">
         {error}

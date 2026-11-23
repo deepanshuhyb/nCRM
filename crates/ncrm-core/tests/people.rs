@@ -302,6 +302,7 @@ fn kid(name: &str, contacts: Vec<NewContact>) -> NewStudent {
         date_of_birth: Some(Date::from_calendar_date(2015, Month::March, 4).unwrap()),
         branch_id: None,
         notes: None,
+        joined_on: None,
         contacts,
     }
 }
@@ -491,6 +492,7 @@ async fn status_changes_and_contact_management(pool: PgPool) {
             branch_id: None,
             status: StudentStatus::Left,
             notes: Some("  Moved away  ".into()),
+            joined_on: s.student.joined_on,
         },
     )
     .await
@@ -575,6 +577,7 @@ async fn students_and_contacts_never_cross_studios(pool: PgPool) {
         branch_id: None,
         status: StudentStatus::Left,
         notes: None,
+        joined_on: mine.student.joined_on,
     };
     assert!(matches!(
         students::update(&mut tx, actor(&desk_b), mine.student.id, edit).await,
@@ -610,4 +613,80 @@ async fn students_and_contacts_never_cross_studios(pool: PgPool) {
         .await;
     assert!(r.is_err());
     let _ = Uuid::nil();
+}
+
+// ------------------------------------------------------------ join dates
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn join_dates_follow_the_studio_calendar_and_can_be_backdated(pool: PgPool) {
+    let org = studio(&pool, "alpha").await;
+    let desk = person(&pool, &org, "+919800000003", StaffRole::FrontDesk).await;
+    let mut tx = TenantTx::begin(&pool, org.id).await.unwrap();
+    let today = tx.studio_today().await.unwrap();
+
+    // Not given: today, in the studio's calendar, and not backdated.
+    let now = students::create(&mut tx, actor(&desk), kid("Aarav", vec![]))
+        .await
+        .unwrap();
+    assert_eq!(now.student.joined_on, today);
+    assert_eq!(now.student.entered_on, today);
+
+    // Backdated: kept as given; entered_on shows when it was typed in.
+    let earlier = Date::from_calendar_date(2024, Month::March, 3).unwrap();
+    let back = students::create(
+        &mut tx,
+        actor(&desk),
+        NewStudent {
+            joined_on: Some(earlier),
+            ..kid("Bela", vec![])
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(back.student.joined_on, earlier);
+    assert!(back.student.entered_on > back.student.joined_on);
+    let flagged: bool = sqlx::query_scalar(
+        "SELECT (detail->>'backdated')::bool FROM audit_log WHERE entity_id = $1",
+    )
+    .bind(back.student.id)
+    .fetch_one(tx.conn())
+    .await
+    .unwrap();
+    assert!(flagged);
+
+    for (when, why) in [
+        (today.next_day().unwrap(), "future"),
+        (
+            Date::from_calendar_date(1999, Month::December, 31).unwrap(),
+            "too old",
+        ),
+        // kid() was born in 2015.
+        (
+            Date::from_calendar_date(2014, Month::January, 1).unwrap(),
+            "before birth",
+        ),
+    ] {
+        let r = students::create(
+            &mut tx,
+            actor(&desk),
+            NewStudent {
+                joined_on: Some(when),
+                ..kid("Chirag", vec![])
+            },
+        )
+        .await;
+        assert!(matches!(r, Err(Error::Invalid(_))), "{why}: {r:?}");
+    }
+
+    // 01:30 in India on 23 Nov is still 22 Nov in UTC.
+    let local: Date =
+        sqlx::query_scalar("SELECT studio_date($1, '2026-11-22T20:00:00Z'::timestamptz)")
+            .bind(org.id)
+            .fetch_one(tx.conn())
+            .await
+            .unwrap();
+    assert_eq!(
+        local,
+        Date::from_calendar_date(2026, Month::November, 23).unwrap()
+    );
 }
