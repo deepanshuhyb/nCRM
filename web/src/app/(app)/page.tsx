@@ -68,7 +68,9 @@ export default async function HomePage() {
               Welcome back, {firstName}. You&apos;re in {studio.org_name}.
             </p>
             <h1 id="setup-title" className="font-display m-0 max-w-[15ch] text-[34px] leading-[1.04] font-semibold sm:text-[52px]">
-              {remaining === 0 ? "Your studio is set up." : `${remaining} steps to get ${studio.org_name} running.`}
+              {remaining === 0
+                ? "Your studio is set up."
+                : `${remaining} ${remaining === 1 ? "step" : "steps"} to get ${studio.org_name} running.`}
             </h1>
           </div>
           <ol className="m-0 mt-6 flex list-none flex-col gap-2.5 p-0">

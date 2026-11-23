@@ -46,6 +46,18 @@ pub async fn create(pool: &PgPool, new: NewOrganization) -> Result<Organization>
     Ok(org)
 }
 
+/// Find a studio by its slug. Like `create`, this runs outside any studio,
+/// so it is only for signup and support or development tooling.
+pub async fn find_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Organization>> {
+    let org = sqlx::query_as::<_, Organization>(
+        "SELECT id, name, slug, timezone, created_at FROM organizations WHERE slug = $1",
+    )
+    .bind(slug.trim().to_lowercase())
+    .fetch_optional(pool)
+    .await?;
+    Ok(org)
+}
+
 /// The studio this transaction is scoped to.
 pub async fn current(tx: &mut TenantTx) -> Result<Organization> {
     let org = sqlx::query_as::<_, Organization>(

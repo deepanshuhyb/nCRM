@@ -511,6 +511,7 @@ allowed to. Each looks up only the caller's own phone number or session:
 | `auth::memberships`, `select_studio` | Studio switcher |
 | `auth::session_from_token`, `staff_context` | Turns a cookie into a studio context, on every request |
 | `orgs::create` | A new studio doesn't exist yet |
+| `orgs::find_by_slug` | Used by the development seeder (`ncrm-dev-seed`) to see whether the demo studio exists; later by signup |
 
 ## Configuration
 
