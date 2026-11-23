@@ -8,13 +8,14 @@
 //!   there. Carries the org id every studio-scoped query needs, and the role
 //!   for `require`.
 
-use axum::extract::{FromRequest, FromRequestParts, Request};
+use axum::extract::{FromRequest, FromRequestParts, Query, Request};
 use axum::http::request::Parts;
 use axum::Json;
 use axum_extra::extract::cookie::CookieJar;
-use ncrm_core::access::Capability;
+use ncrm_core::access::{Actor, Capability};
 use ncrm_core::auth::{self, Session, StaffContext};
 use serde::de::DeserializeOwned;
+use uuid::Uuid;
 
 use crate::error::ApiError;
 use crate::AppState;
@@ -38,6 +39,30 @@ where
             Err(rejection) => Err(ApiError::Invalid(rejection.body_text())),
         }
     }
+}
+
+/// Query-string parameters. Bad values become a 400 in our error shape.
+pub struct Params<T>(pub T);
+
+impl<T, S> FromRequestParts<S> for Params<T>
+where
+    T: DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        match Query::<T>::from_request_parts(parts, state).await {
+            Ok(Query(value)) => Ok(Params(value)),
+            Err(rejection) => Err(ApiError::Invalid(rejection.body_text())),
+        }
+    }
+}
+
+/// Parse an id from the URL. Anything that isn't a UUID is simply "not
+/// found", the same answer as an id from another studio.
+pub fn parse_id(raw: &str) -> Result<Uuid, ApiError> {
+    Uuid::parse_str(raw).map_err(|_| ApiError::NotFound)
 }
 
 /// A valid session.
@@ -69,6 +94,15 @@ impl FromRequestParts<AppState> for SignedIn {
 pub struct Staff(pub StaffContext);
 
 impl Staff {
+    /// Who is acting, for core functions that apply their own rules and
+    /// write the audit log.
+    pub fn actor(&self) -> Actor {
+        Actor {
+            staff_id: self.0.staff_id,
+            role: self.0.role,
+        }
+    }
+
     /// Refuse with 403 unless the person's role allows `cap`.
     pub fn require(&self, cap: Capability) -> Result<(), ApiError> {
         if self.0.role.can(cap) {

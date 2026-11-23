@@ -2,10 +2,19 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { cache } from "react";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { apiOrigin } from "@/lib/env";
-import type { ApiErrorBody, Branch, Me } from "@/lib/types";
+import type {
+  ApiErrorBody,
+  Branch,
+  Me,
+  Page,
+  StaffMember,
+  StudentDetail,
+  StudentListItem,
+  Summary,
+} from "@/lib/types";
 
 /**
  * Calls the Rust API from Server Components, on behalf of the person whose
@@ -52,6 +61,7 @@ async function apiGet<T>(path: string): Promise<T> {
   const code = ((await res.json().catch(() => null)) as ApiErrorBody | null)?.error?.code ?? "unknown";
   if (code === "not_signed_in") redirect("/sign-in");
   if (code === "choose_studio") redirect("/choose-studio");
+  if (code === "not_found") notFound();
   throw new ApiRequestError(res.status, code);
 }
 
@@ -64,4 +74,32 @@ export const getMe = cache((): Promise<Me> => apiGet<Me>("/auth/me"));
 /** Branches of the current studio. */
 export function listBranches(): Promise<Branch[]> {
   return apiGet<Branch[]>("/branches");
+}
+
+/** Home-screen counts. */
+export function getSummary(): Promise<Summary> {
+  return apiGet<Summary>("/summary");
+}
+
+/** The studio's team. Owners and managers only. */
+export function listStaff(): Promise<StaffMember[]> {
+  return apiGet<StaffMember[]>("/staff");
+}
+
+export type StudentQuery = { q?: string; status?: string; offset?: number };
+
+/** A page of students. Values are passed as query parameters, never as path. */
+export function listStudents(query: StudentQuery): Promise<Page<StudentListItem>> {
+  const params = new URLSearchParams();
+  if (query.q) params.set("q", query.q.slice(0, 80));
+  if (query.status) params.set("status", query.status);
+  if (query.offset) params.set("offset", String(query.offset));
+  params.set("limit", "50");
+  return apiGet<Page<StudentListItem>>(`/students?${params.toString()}`);
+}
+
+/** One student. Anything that isn't a UUID is a 404 without asking the API. */
+export function getStudent(id: string): Promise<StudentDetail> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) notFound();
+  return apiGet<StudentDetail>(`/students/${id}`);
 }

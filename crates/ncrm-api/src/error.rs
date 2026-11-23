@@ -116,6 +116,7 @@ impl From<ncrm_core::Error> for ApiError {
         use ncrm_core::Error as E;
         match err {
             E::NotFound => ApiError::NotFound,
+            E::Forbidden => ApiError::NotAllowed,
             E::Conflict(what) => ApiError::Conflict(what),
             E::Invalid(what) => ApiError::Invalid(what),
             E::InvalidCode => ApiError::InvalidCode,

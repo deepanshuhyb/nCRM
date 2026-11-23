@@ -79,7 +79,21 @@ What makes it read as real glass rather than a template:
   sliding."), with the chart's description underneath.
 - Every insight has the action next to it (Send reminders, Message).
 - Touch targets at least 44px. Mobile-first: every screen works at 390px.
-- Phone navigation is a glass bar at the bottom.
+- Phone navigation is a glass bar at the bottom. It shows only the pages
+  the person's role can open, so its column count follows the items.
+- Records (students, team) are a list of rows inside one glass panel, not a
+  card per record. A row links to the full profile.
+- Rarely used edits sit behind a disclosure ("Edit details or status")
+  with a chevron, so the profile reads as a profile, not a form.
+- Something missing that will cause trouble later (a student with no
+  contact) is called out in the attention colour on the row itself.
+
+## Styles and Tailwind
+
+Our classes (`.glass`, `.row`, `.btn`, `.field`, `.tag`, …) live in
+`@layer components` in `globals.css`, so a Tailwind utility on the same
+element (`px-0`, `py-3`, `m-0`) wins. Put new component classes there too.
+See the cascade-layer note in `docs/NOTES.md`.
 
 ## Copy
 

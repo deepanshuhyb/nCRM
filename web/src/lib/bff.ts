@@ -9,7 +9,7 @@
  */
 
 /** Top-level API paths the dashboard may reach. Add new ones here. */
-export const ALLOWED_PREFIXES = ["auth", "branches"] as const;
+export const ALLOWED_PREFIXES = ["auth", "branches", "staff", "students", "summary"] as const;
 
 /** Request headers passed on to the API. Everything else is dropped. */
 export const FORWARDED_REQUEST_HEADERS = [

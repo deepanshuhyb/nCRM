@@ -13,5 +13,6 @@ pub mod error;
 pub mod orgs;
 pub mod phone;
 pub mod staff;
+pub mod students;
 
 pub use error::{Error, Result};

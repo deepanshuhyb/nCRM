@@ -16,6 +16,223 @@ Template:
 
 ---
 
+## 2026-11-23: Utility classes that did nothing (CSS cascade layers)
+
+**Context:** the student profile and the theme button.
+
+**What wasn't obvious:** `className="btn px-0"` left the button's padding
+at 18px, and the theme button's moon icon was squeezed to a 2px sliver.
+Tailwind 4 puts its utilities in a CSS *cascade layer*
+(`@layer utilities`). Our own `.btn`, `.field`, `.glass` rules were written
+outside any layer, and unlayered CSS beats layered CSS whatever the
+specificity. So every utility that touched the same property as one of
+our classes (`px-0`, `py-3`, `m-0`, `min-h-[44px]`) was silently ignored.
+Nothing errors; it just looks slightly wrong.
+
+**What we did:** wrapped the surfaces, controls and list styles in
+`@layer components { … }` in `globals.css`. Tailwind declares the order
+`theme, base, components, utilities`, so a utility on the same element now
+wins, which is what anyone reading the markup expects. The rules inside
+the layer keep their order relative to each other, so `.segmented` still
+overrides `.glass` where both are used. Rules that must beat everything
+(the bottom nav, reduced motion) stay unlayered on purpose.
+
+Also: after editing `globals.css`, `pnpm build` once reused a stale
+stylesheet from Turbopack's cache (`.next/cache`) and the change didn't
+show. `rm -rf .next` and building again fixed it. If a CSS change doesn't
+appear in a production build, check the built file in
+`.next/static/chunks/*.css` before debugging the CSS.
+
+**Consequences:** new component classes go inside the `components` layer.
+Don't fight a utility with `!important`; if a utility seems ignored, check
+whether the competing rule is unlayered.
+
+## 2026-11-23: People are shared, not copied: contacts
+
+**Context:** students and the numbers we message about them.
+
+**What wasn't obvious:** two siblings have the same mother. If each
+student stored "parent phone" as a column, the mother is two records; a
+fee reminder for both kids is two separate messages, and fixing her number
+means finding every copy. And on WhatsApp, the identity is the phone
+number, so a number must map to exactly one person per studio.
+
+**What we did:** a `contacts` table, unique on `(org_id, phone)`, and a
+link table `student_contacts` with the relation (mother, father, self…)
+and an `is_primary` flag. Adding a contact whose number already exists
+reuses that row (`INSERT … ON CONFLICT (org_id, phone) DO UPDATE SET phone
+= EXCLUDED.phone RETURNING id`; the no-op update is there because
+`DO NOTHING` returns no row). The existing name is kept: if the second
+sibling's form says "N. Sharma", the mother stays "Neha Sharma" rather
+than whoever typed last overwriting her. The profile shows "also for 1
+other student" so staff can see the sharing.
+
+A partial unique index allows one primary contact per student. When the
+primary is removed, the oldest remaining contact is promoted, so reminders
+never silently stop. Up to 4 contacts per student.
+
+**Consequences:** the WhatsApp bot will look up `contacts` by phone and
+can answer for all of that person's children at once. Renaming a contact
+is a separate action (not built yet), not a side effect of adding a
+student.
+
+## 2026-11-23: The app can't delete people
+
+**Context:** what "remove a student" should mean.
+
+**What wasn't obvious:** deleting a student row would take their
+attendance and fee history with it, and an accidental tap would be
+unrecoverable. But India's DPDP Act also gives people the right to have
+their data erased, so "never delete" isn't an answer either.
+
+**What we did:** the `ncrm_app` role has no `DELETE` on `students`,
+`contacts` or `staff`. Leaving is a status (`left`, or a deactivated team
+member), which keeps history and can be undone. Removing a contact from a
+student only deletes the link row. Erasure on request will be a separate,
+audited job that runs as the owner role, not a button in the dashboard.
+
+**Consequences:** listed in `docs/PLAN.md`. Most students are minors. The
+DPDP Rules 2025 (notified 13 Nov 2025) require verifiable parental consent
+before processing a child's data, and that obligation takes effect on
+13 May 2027 unless brought forward. Consent capture is planned before
+then; whether any exemption applies to a dance studio is a question for a
+lawyer, not for us.
+
+## 2026-11-23: A studio must always keep an owner
+
+**Context:** editing team members.
+
+**What wasn't obvious:** "refuse to demote the last owner" sounds like
+one `SELECT count(*)`. But two owners can each demote the other at the
+same moment: each transaction counts two owners, both pass, both commit,
+and the studio has none. Under Postgres's default isolation level, the
+two transactions don't see each other's uncommitted changes.
+
+**What we did:** in `staff::update`, the target row is read
+`FOR UPDATE`, and before demoting or deactivating an owner we run
+`SELECT id FROM staff WHERE role = 'owner' AND active AND id <> $1
+FOR UPDATE`. That locks the *other* owners' rows. The second transaction
+waits on the lock until the first commits, then re-reads and sees there's
+no other owner left, and refuses. Other rules: only owners can create or
+grant owner, managers can't edit owners at all, and nobody can change
+their own role or deactivate themselves. The test also covers a stale
+actor: an owner deactivated in the meantime who tries to demote the last
+owner.
+
+**Consequences:** any future rule of the form "there must always be at
+least one X" needs the same lock-the-others pattern, not a count.
+
+## 2026-11-23: A test that hung forever: a shadowed transaction
+
+**Context:** the people tests in `ncrm-core/tests/people.rs`.
+
+**What wasn't obvious:** a test opened `let mut tx = TenantTx::begin(…)`,
+updated a staff row, then later wrote `let mut tx = TenantTx::begin(…)`
+again to check something else. In Rust, the second `let` *shadows* the
+first name but doesn't end the first value's life: the first transaction
+stayed open until the end of the function, still holding its
+`FOR UPDATE` row lock. The second transaction waited for that lock, which
+would only be released when the test finished: a deadlock with no error.
+
+**What we did:** `drop(tx)` (rolls back) or `tx.commit()` before starting
+the next transaction, with a comment at that spot.
+
+**Consequences:** in tests and in code, finish a transaction explicitly
+before opening another on the same rows. If a test hangs instead of
+failing, look for two transactions alive at once.
+
+## 2026-11-23: Updates are PUT with the whole object
+
+**Context:** editing students and team members.
+
+**What wasn't obvious:** with PATCH, `{}` means "change nothing" and
+`{"branch_id": null}` means "clear the branch". Serde in Rust and JSON in
+TypeScript both make it easy to turn one into the other by accident (an
+`Option` that's `None` either way, `undefined` dropped by
+`JSON.stringify`). A bug there silently erases data.
+
+**What we did:** `PUT /students/{id}` and `PUT /staff/{id}` take every
+editable field, every time. The dashboard's edit forms hold the whole
+record and send it back. The server compares old and new to work out what
+changed (for the audit log and for rules like "a phone change signs them
+out").
+
+**Consequences:** two people editing the same student at once: the last
+save wins. Fine for a studio's front desk; if it ever isn't, add a
+version column and refuse stale writes.
+
+## 2026-11-23: What the audit log records
+
+**Context:** recording team and student changes.
+
+**What wasn't obvious:** an audit log is kept for years and read by
+whoever runs support. If entries contain phone numbers, the audit log
+becomes a second copy of every contact list, and erasing a person would
+mean rewriting history.
+
+**What we did:** entries record who acted, what kind of thing changed and
+which fields (`"changed": ["phone"]`), and for team edits the before and
+after of role and active when those changed. Never phone numbers, names
+of contacts, or notes. Tests check that no phone number appears.
+
+**Consequences:** "what was her old number?" can't be answered from the
+log. That's deliberate.
+
+## 2026-11-23: Checks in the core, not only in handlers
+
+**Context:** who may change students and the team.
+
+**What wasn't obvious:** every handler already calls
+`staff.require(Capability::…)`. But the WhatsApp bot, an Excel import and
+worker jobs will call the same core functions without going through a
+handler, and a missing check there would be invisible.
+
+**What we did:** core functions that change people take an `Actor`
+(staff id and role) and call `actor.require(…)` themselves, returning
+`Error::Forbidden`. The handler check stays too: it refuses before any
+database work. Instructors can open the home page, so `/summary` needs
+only "view the studio" and returns counts only, never names or numbers.
+
+**Consequences:** instructors will need to see *their own* batches'
+students for attendance. That's a narrower rule (planned with classes),
+not "manage students".
+
+## 2026-11-23: Search that can't be turned against us
+
+**Context:** the student search box.
+
+**What wasn't obvious:** `ILIKE '%' || $1 || '%'` is safe from SQL
+injection because `$1` is a bound parameter, but `%` and `_` inside the
+search text are still wildcards: searching for `%` matches everyone, and a
+long run of `_%_%_%` can make Postgres work hard.
+
+**What we did:** `%`, `_` and `\` are escaped before the pattern is built
+(`ESCAPE '\'`), searches longer than 80 characters are refused (the
+dashboard trims to 80 before sending), and pages are at most 100 rows.
+If the text has 4 or more digits, we also match contact phone numbers by
+digits, so typing the last digits of a parent's number finds the child.
+Fewer than 4 digits would match almost everyone.
+
+**Consequences:** fine up to tens of thousands of students per studio.
+Beyond that, a trigram index (`pg_trgm`) on names is the next step.
+
+## 2026-11-23: Dates go over JSON as "2026-11-03"
+
+**Context:** date of birth and joined date.
+
+**What wasn't obvious:** the `time` crate's default serde format for a
+`Date` is a compact tuple like `[2026, 307]` (year and day of the year),
+which no browser understands.
+
+**What we did:** enabled the crate's `serde-human-readable` feature, so
+`Date` is written and read as `"2026-11-03"` (ISO 8601). The dashboard
+formats it as "3 Nov 2026" in `lib/format.ts` without creating a
+JavaScript `Date` from the string, because `new Date("2026-11-03")` is
+midnight UTC, which can show as the previous day in some time zones.
+
+**Consequences:** every date field in the API is an ISO date string; every
+timestamp is an RFC 3339 string with a time zone.
+
 ## 2026-11-23: Next.js 16 is not the Next.js most examples show
 
 **Context:** scaffolding the dashboard with `create-next-app@16.4.6`.

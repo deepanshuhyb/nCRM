@@ -41,6 +41,9 @@ describe("apiTarget", () => {
   it("maps allowed paths onto the API origin", () => {
     expect(apiTarget(API, ["auth", "me"], "")?.toString()).toBe(`${API}/auth/me`);
     expect(apiTarget(API, ["branches"], "?active=true")?.toString()).toBe(`${API}/branches?active=true`);
+    expect(apiTarget(API, ["students", "0b8f3e1c-1f2a-4c3d-9e8f-123456789abc", "contacts"], "")?.pathname).toBe(
+      "/students/0b8f3e1c-1f2a-4c3d-9e8f-123456789abc/contacts",
+    );
   });
 
   it.each([
@@ -106,5 +109,23 @@ describe("buildCsp", () => {
     const seen = new Set(Array.from({ length: 200 }, () => newNonce()));
     expect(seen.size).toBe(200);
     for (const n of seen) expect(atob(n)).toHaveLength(16);
+  });
+});
+
+describe("format helpers", async () => {
+  const { ageFrom, formatDate, formatPhone } = await import("./format");
+  it("formats Indian numbers and leaves others alone", () => {
+    expect(formatPhone("+919811122233")).toBe("+91 98111 22233");
+    expect(formatPhone("+14155552671")).toBe("+14155552671");
+  });
+  it("works out age on and around birthdays", () => {
+    const today = new Date(2026, 10, 23);
+    expect(ageFrom("2015-11-23", today)).toBe(11);
+    expect(ageFrom("2015-11-24", today)).toBe(10);
+    expect(ageFrom("2030-01-01", today)).toBeNull();
+    expect(ageFrom("garbage", today)).toBeNull();
+  });
+  it("formats dates without time zones getting involved", () => {
+    expect(formatDate("2026-11-03")).toBe("3 Nov 2026");
   });
 });

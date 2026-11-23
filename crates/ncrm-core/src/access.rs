@@ -6,8 +6,32 @@
 //! the single place the rules live.
 
 use serde::Serialize;
+use uuid::Uuid;
 
 use crate::staff::StaffRole;
+use crate::{Error, Result};
+
+/// The staff member doing something. Passed into functions that apply
+/// rules beyond the capability matrix (who may change whom) and that record
+/// who did what in the audit log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Actor {
+    pub staff_id: Uuid,
+    pub role: StaffRole,
+}
+
+impl Actor {
+    /// Refuse unless the actor's role allows `cap`. Handlers check this too;
+    /// checking again in the core means a forgotten handler check can't
+    /// open a hole.
+    pub fn require(&self, cap: Capability) -> Result<()> {
+        if self.role.can(cap) {
+            Ok(())
+        } else {
+            Err(Error::Forbidden)
+        }
+    }
+}
 
 /// Things a signed-in staff member might try to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]

@@ -6,20 +6,17 @@ import { useState } from "react";
 
 import { apiSend } from "@/lib/api-client";
 
-export const NAV = [
-  { href: "/", label: "Home" },
-  { href: "/branches", label: "Branches" },
-] as const;
+export type NavItem = { href: string; label: string };
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function TopNav() {
+export function TopNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   return (
     <nav aria-label="Main" className="top-nav segmented glass">
-      {NAV.map((item) => (
+      {items.map((item) => (
         <Link key={item.href} href={item.href} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
           {item.label}
         </Link>
@@ -28,11 +25,15 @@ export function TopNav() {
   );
 }
 
-export function BottomNav() {
+export function BottomNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Main" className="bottom-nav glass">
-      {NAV.map((item) => (
+    <nav
+      aria-label="Main"
+      className="bottom-nav glass"
+      style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+    >
+      {items.map((item) => (
         <Link key={item.href} href={item.href} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
           {item.label}
         </Link>

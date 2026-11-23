@@ -17,6 +17,10 @@ pub enum Error {
     #[error("invalid input: {0}")]
     Invalid(String),
 
+    /// The acting staff member's role does not allow this.
+    #[error("not allowed")]
+    Forbidden,
+
     /// The sign-in code is wrong, expired or already used. Deliberately one
     /// error for all three, so guesses learn nothing.
     #[error("that code is wrong or has expired")]

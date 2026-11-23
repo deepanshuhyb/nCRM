@@ -2,32 +2,46 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Grain } from "@/components/grain";
-import { getMe, listBranches } from "@/lib/api-server";
+import { getMe, getSummary } from "@/lib/api-server";
 import { ROLE_LABEL } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Home" };
 
 /**
- * The owner's home. Students, classes and fees aren't built yet, so instead
- * of fake numbers the hero is the setup checklist, and the tiles say
- * plainly what will appear there.
+ * The owner's home. Classes, attendance and fees aren't built yet, so the
+ * hero is the setup checklist (each step done when its data exists) and
+ * the tiles show real counts or say plainly what will appear.
  */
 export default async function HomePage() {
-  const [me, branches] = await Promise.all([getMe(), listBranches()]);
+  const [me, summary] = await Promise.all([getMe(), getSummary()]);
   const studio = me.studio!;
+  const can = new Set(studio.capabilities);
   const firstName = studio.staff_name.split(" ")[0];
-  const canManageBranches = studio.capabilities.includes("manage_branches");
 
   const steps = [
     {
       title: "Add your branches",
-      done: branches.length > 0,
-      detail: branches.length > 0 ? `${branches.length} added` : "Start with where you teach",
-      href: "/branches",
+      done: summary.branches > 0,
+      detail: summary.branches > 0 ? `${summary.branches} added` : "Start with where you teach",
+      action: can.has("manage_branches") ? { href: "/branches", label: "Add branches" } : null,
+      view: "/branches",
     },
-    { title: "Add teachers and front desk", done: false, detail: "Coming next", href: null },
-    { title: "Add students and batches", done: false, detail: "Coming next", href: null },
-    { title: "Connect WhatsApp", done: false, detail: "Coming next", href: null },
+    {
+      title: "Add teachers and front desk",
+      done: summary.active_team > 1,
+      detail: summary.active_team > 1 ? `${summary.active_team} people on the team` : "So they can sign in and mark attendance",
+      action: can.has("manage_staff") ? { href: "/team", label: "Add people" } : null,
+      view: can.has("manage_staff") ? "/team" : null,
+    },
+    {
+      title: "Add students",
+      done: summary.active_students > 0,
+      detail: summary.active_students > 0 ? `${summary.active_students} active` : "With the number we should message",
+      action: can.has("manage_students") ? { href: "/students/new", label: "Add a student" } : null,
+      view: can.has("manage_students") ? "/students" : null,
+    },
+    { title: "Set up classes and batches", done: false, detail: "Coming next", action: null, view: null },
+    { title: "Connect WhatsApp", done: false, detail: "After classes", action: null, view: null },
   ];
   const remaining = steps.filter((s) => !s.done).length;
 
@@ -40,7 +54,7 @@ export default async function HomePage() {
             <p className="soft m-0 mb-2.5 text-base font-medium">
               Welcome back, {firstName}. You&apos;re in {studio.org_name}.
             </p>
-            <h1 id="setup-title" className="font-display m-0 max-w-[14ch] text-[34px] leading-[1.04] font-semibold sm:text-[52px]">
+            <h1 id="setup-title" className="font-display m-0 max-w-[15ch] text-[34px] leading-[1.04] font-semibold sm:text-[52px]">
               {remaining === 0 ? "Your studio is set up." : `${remaining} steps to get ${studio.org_name} running.`}
             </h1>
           </div>
@@ -64,12 +78,12 @@ export default async function HomePage() {
                     {step.detail}
                   </span>
                 </span>
-                {step.href && !step.done && canManageBranches ? (
-                  <Link href={step.href} className="btn btn-primary">
-                    Add branches
+                {!step.done && step.action ? (
+                  <Link href={step.action.href} className="btn btn-primary">
+                    {step.action.label}
                   </Link>
-                ) : step.href && step.done ? (
-                  <Link href={step.href} className="btn btn-ghost">
+                ) : step.done && step.view ? (
+                  <Link href={step.view} className="btn btn-ghost">
                     View
                   </Link>
                 ) : null}
@@ -79,28 +93,39 @@ export default async function HomePage() {
         </section>
 
         <section aria-label="At a glance" className="grid min-w-0 flex-[5_1_380px] grid-cols-2 gap-[18px]">
-          <Link href="/branches" className="glass flex flex-col justify-between gap-4 p-[22px] no-underline" style={{ color: "inherit" }}>
-            <span className="muted text-sm font-medium">Branches</span>
-            <span className="font-display text-[48px] leading-none font-semibold">{branches.length}</span>
-            <span className="soft text-[13px]">{branches.filter((b) => b.active).length} open</span>
-          </Link>
-          <div className="glass flex flex-col justify-between gap-4 p-[22px]">
-            <span className="muted text-sm font-medium">Your role</span>
-            <span className="font-display text-[26px] leading-tight font-semibold">{ROLE_LABEL[studio.role]}</span>
-            <span className="soft text-[13px]">{studio.capabilities.length} kinds of access</span>
-          </div>
-          <div className="glass flex flex-col justify-between gap-4 p-[22px]">
-            <span className="muted text-sm font-medium">Students</span>
-            <span className="font-display text-[26px] leading-tight font-semibold">Not yet</span>
-            <span className="soft text-[13px]">They&apos;ll show here once you add them.</span>
-          </div>
-          <div className="glass flex flex-col justify-between gap-4 p-[22px]">
-            <span className="muted text-sm font-medium">Attendance</span>
-            <span className="font-display text-[26px] leading-tight font-semibold">Not yet</span>
-            <span className="soft text-[13px]">Starts once classes are set up.</span>
-          </div>
+          <Tile
+            label="Active students"
+            value={String(summary.active_students)}
+            note={summary.active_students === 0 ? "Add your first student" : "Paused and left aren't counted"}
+            href={can.has("manage_students") ? "/students" : null}
+          />
+          <Tile
+            label="Team"
+            value={String(summary.active_team)}
+            note={`You're ${ROLE_LABEL[studio.role].toLowerCase()}`}
+            href={can.has("manage_staff") ? "/team" : null}
+          />
+          <Tile label="Branches" value={String(summary.branches)} note={`${summary.open_branches} open`} href="/branches" />
+          <Tile label="Attendance" value="Not yet" note="Starts once classes are set up" href={null} small />
         </section>
       </div>
     </div>
+  );
+}
+
+function Tile({ label, value, note, href, small }: { label: string; value: string; note: string; href: string | null; small?: boolean }) {
+  const body = (
+    <>
+      <span className="muted text-sm font-medium">{label}</span>
+      <span className={`font-display leading-none font-semibold ${small ? "text-[26px]" : "text-[48px]"}`}>{value}</span>
+      <span className="soft text-[13px]">{note}</span>
+    </>
+  );
+  return href ? (
+    <Link href={href} className="glass flex flex-col justify-between gap-4 p-[22px] no-underline" style={{ color: "inherit" }}>
+      {body}
+    </Link>
+  ) : (
+    <div className="glass flex flex-col justify-between gap-4 p-[22px]">{body}</div>
   );
 }

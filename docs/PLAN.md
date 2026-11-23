@@ -29,13 +29,16 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 
 ## 1. Core records
 
-- [ ] Students and guardians, one family profile, shared phone numbers
-- [ ] Teachers
+- [x] Students with contacts (parents, guardians or themselves); one contact per number, shared by siblings
+- [x] Team management: hire, change role, phone or branch, deactivate; owner safeguards
+- [x] Students and team screens: list, search, add, profile, edit; navigation by role; home counts
 - [ ] Rooms, batches, schedules
 - [ ] Plans: monthly batch fee, class pack, drop-in
 - [ ] Enrollments and the credit ledger for packs
+- [ ] Instructors see their own batches' students (for attendance), not the whole list
+- [ ] Rename a contact; merge two contacts that turn out to be one person
 - [ ] Excel import with duplicate detection by phone number
-- [ ] Dashboard screens for all of the above
+- [ ] Dashboard screens for classes, plans and enrollments
 
 ## 2. Attendance and bookings
 
@@ -81,4 +84,7 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [ ] nginx config: TLS, `X-Real-IP`, only public listener; API and dashboard on 127.0.0.1
 - [ ] Move rate-limit counters to Postgres if we run more than one API process
 - [ ] Cleanup job: delete sign-in codes older than a day, expired sessions
+- [ ] Verifiable parental consent for students under 18 (DPDP Rules 2025, Rule 10; applies from 13 May 2027). Ask a lawyer whether any exemption covers studios
+- [ ] Erase a person on request: audited owner-role job, not a dashboard button
+- [ ] Optimistic locking (version column) if two people editing one record becomes a real problem
 - [ ] Events, make-up credits, progress tracking

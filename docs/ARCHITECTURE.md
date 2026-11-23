@@ -50,7 +50,9 @@ crates/
     src/db.rs        connection pool, migrations, TenantTx
     src/auth.rs      sign-in: codes, sessions, studio switching
     src/access.rs    what each role may do
-    src/orgs.rs, branches.rs, staff.rs, audit.rs   studio data
+    src/orgs.rs, branches.rs, audit.rs   studio data
+    src/staff.rs     the team: hire, change role/phone/branch, deactivate
+    src/students.rs  students, their contacts, search
     src/phone.rs     phone number normalization
   ncrm-api/     HTTP layer (Axum)
     src/lib.rs       routes and protective layers (headers, limits, timeout)
@@ -59,13 +61,17 @@ crates/
     src/error.rs     the one JSON error format
     src/sign_in.rs   /auth/*
     src/branches.rs  /branches, the pattern for studio-scoped routes
+    src/team.rs      /staff
+    src/students.rs  /students and their contacts
+    src/summary.rs   /summary, the counts on the home page
   ncrm-worker/  background jobs (stub)
 migrations/     SQL, applied in order, embedded into the binaries
 web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
   src/proxy.ts               CSP nonce + security headers, sign-in redirect
   src/app/api/[...path]/     same-origin gateway to the Rust API
   src/app/(auth)/            sign-in, choose a studio
-  src/app/(app)/             the signed-in app: shell, home, branches
+  src/app/(app)/             the signed-in app: shell, home, branches,
+                             students, team
   src/lib/api-server.ts      server-side API calls (server-only)
   src/lib/api-client.ts      browser-side API calls through /api
   src/lib/bff.ts, csp.ts, safe-redirect.ts   security helpers (unit-tested)
@@ -81,7 +87,7 @@ One PostgreSQL database, two schemas, two roles.
 
 | | `public` schema | `platform` schema |
 |---|---|---|
-| Holds | Studio data: organizations, branches, staff, audit log, and later students, classes, attendance, fees | Data that exists before anyone is inside a studio: sign-in codes, sessions |
+| Holds | Studio data: organizations, branches, staff, students, contacts, audit log, and later classes, attendance, fees | Data that exists before anyone is inside a studio: sign-in codes, sessions |
 | Every row has | `org_id` | no studio |
 | Protected by | Row-level security, policy per table | No access for `ncrm_app` at all |
 
@@ -106,6 +112,33 @@ One PostgreSQL database, two schemas, two roles.
 Both settings end with the transaction, so the next request that borrows
 the same pooled connection starts clean. A test proves this. Full rules:
 `docs/TENANCY.md`.
+
+### Studio tables
+
+| Table | One row is | Notes |
+|---|---|---|
+| `organizations` | a studio (the tenant) | Its `id` is the `org_id` everywhere else |
+| `branches` | a place the studio teaches | |
+| `staff` | a person on the team, with a role | Phone unique per studio; that phone is how they sign in |
+| `students` | someone who takes classes | Status `active`, `paused` or `left`; never deleted by the app (see below) |
+| `contacts` | a WhatsApp number we may message | Phone unique per studio, so siblings share one parent |
+| `student_contacts` | "this contact is the mother/father/self… of this student" | At most one `is_primary` per student; up to 4 per student |
+| `audit_log` | something that changed, who did it | Append-only: the app role can insert and read, not change or delete |
+
+```
+students ──< student_contacts >── contacts
+   │  (org_id, student_id)      (org_id, contact_id)
+   └── (org_id, branch_id) ──▶ branches
+```
+
+Every arrow is a composite foreign key that includes `org_id`. Foreign
+key checks ignore row-level security, so a plain `branch_id` key would let
+a student point at another studio's branch; with `(org_id, branch_id)` the
+database itself refuses it.
+
+The app role has no `DELETE` on `students`, `contacts` or `staff`. People
+leave by status (`left`, deactivated). Erasing a person on request is a
+separate, audited job, not a button (planned; see `docs/PLAN.md`).
 
 ## The dashboard
 
@@ -135,9 +168,16 @@ Browser ──POST /api/branches──▶ Next.js route handler app/api/[...path
    `src/lib/api-server.ts`. It forwards only the session cookie, never
    caches, and turns "not signed in" into a redirect to `/sign-in` and
    "no studio picked" into a redirect to `/choose-studio`.
-2. **Interactive parts** (sign-in form, adding a branch, switching studio,
-   signing out) call `/api/...` on the dashboard's own origin with
-   `src/lib/api-client.ts`. The route handler forwards to the API.
+2. **Interactive parts** (sign-in form, adding a branch, a student or a
+   team member, editing them, switching studio, signing out) call
+   `/api/...` on the dashboard's own origin with `src/lib/api-client.ts`.
+   The route handler forwards to the API. After a change, the component
+   calls `router.refresh()`, which re-renders the server page with fresh
+   data; no data is cached in the browser.
+
+The gateway only forwards paths whose first segment is on the allowlist in
+`src/lib/bff.ts`: `auth`, `branches`, `staff`, `students`, `summary`. A new
+top-level API path is unreachable from the browser until it is added there.
 
 So the browser only ever talks to one origin: the session cookie is
 first-party, no CORS is needed, and the API never has to be reachable from
@@ -161,8 +201,18 @@ referrer policy, permissions policy, HSTS in production) are set in
 |---|---|---|
 | `/sign-in` | anyone | Phone, then 6-digit code |
 | `/choose-studio` | signed in, several studios | Studio picker |
-| `/` | signed in with a studio | Setup checklist, branch count, role; empty states for what isn't built yet |
+| `/` | signed in with a studio | Setup checklist driven by `/summary`, counts for students, team and branches |
 | `/branches` | signed in with a studio | Branch list; add form for owners and managers |
+| `/students` | manage students | Search by name or 4+ phone digits, filter by status, 50 per page |
+| `/students/new` | manage students | Student details and up to 4 contacts |
+| `/students/[id]` | manage students | Profile, contacts (add, remove, choose the main one), edit details and status |
+| `/team` | manage staff | Team list with per-person edit; add someone. Only owners see the "Owner" role |
+
+Navigation shows only the pages the role can open (built from the
+capabilities in `/auth/me`). That is a convenience: a page opened directly
+by someone without the capability shows "You can't open …", and the API
+refuses the data anyway. A student or member id that isn't a UUID, doesn't
+exist, or belongs to another studio gives the same 404 page.
 
 Theme (Daylight or Emerald) is a plain, non-sensitive `ncrm_theme` cookie
 read on the server, so the page renders in the right theme without a
@@ -212,6 +262,30 @@ Every failure becomes `{"error": {"code": "...", "message": "..."}}`:
 
 The dashboard gateway adds two of its own: `api_unreachable` (502) and the
 same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
+
+### Endpoints
+
+| Method and path | Needs | Does |
+|---|---|---|
+| `GET /healthz` | nothing | Database reachable? |
+| `POST /auth/code`, `/auth/verify` | nothing (rate limited) | Sign-in, see below |
+| `GET /auth/me` | session | Who am I, which studio, which capabilities |
+| `POST /auth/studio`, `/auth/sign-out` | session | Switch studio, sign out |
+| `GET /summary` | view studio | Counts for the home page: branches, open branches, active students, active team |
+| `GET, POST /branches` | view / manage branches | List, add |
+| `GET, POST /staff` | manage staff | List the team, add someone |
+| `PUT /staff/{id}` | manage staff | Replace name, phone, role, branch, active |
+| `GET /students?q=&status=&branch_id=&limit=&offset=` | manage students | Search and page; returns `{items, total, limit, offset}` |
+| `POST /students` | manage students | Create with up to 4 contacts |
+| `GET, PUT /students/{id}` | manage students | Profile with contacts; replace name, date of birth, branch, status, notes |
+| `POST /students/{id}/contacts` | manage students | Link a contact (reusing one with the same number) |
+| `DELETE /students/{id}/contacts/{contact_id}` | manage students | Unlink; the oldest remaining contact becomes the main one |
+
+Updates are `PUT` with the whole object, not `PATCH`. With `PATCH`, a
+missing `branch_id` and `"branch_id": null` ("clear it") are easy to mix
+up in both Rust and TypeScript; sending everything every time removes the
+question. Ids in paths that aren't UUIDs get `not_found`, the same as ids
+from another studio.
 
 ## Signing in
 
@@ -265,14 +339,37 @@ do inside it:
 | Billing and message wallet | ✓ | | | |
 
 `GET /auth/me` returns the list for the current role so the dashboard can
-hide what the person can't use. The API checks again on every call.
+hide what the person can't use. The API checks again on every call, and
+the core functions check a third time: every function in `staff.rs` and
+`students.rs` that changes data takes an `Actor` (who is acting, with what
+role) and calls `actor.require(capability)` itself. A future caller that
+isn't an HTTP handler (a worker job, an import, the WhatsApp bot) can't
+forget the check.
+
+Team rules on top of the matrix, enforced in `staff.rs` with row locks:
+
+- Only an owner can add an owner or make someone an owner. Managers can't
+  edit owners at all.
+- Nobody can change their own role or deactivate themselves, so a studio
+  can't lock itself out by accident.
+- A studio always keeps at least one active owner, even if two owners
+  demote each other at the same moment (the other owners' rows are locked
+  while the check runs).
+- Changing someone's phone ends their sessions: a session only works while
+  the staff row still has the phone that signed in.
+
+Instructors can open the home page, so `/summary` needs only "view the
+studio". It returns counts, never names or numbers.
 
 ## Defences at a glance
 
 | Threat | Defence | Where |
 |---|---|---|
 | One studio reading another's data | Row-level security, composite foreign keys | Postgres, `TenantTx` |
-| Doing more than the role allows | Capability check in every handler | `access.rs`, `Staff::require` |
+| Doing more than the role allows | Capability check in every handler, again in core functions | `access.rs`, `Staff::require`, `Actor::require` |
+| A studio losing its last owner | Row-locked "another active owner exists" check | `staff::update` |
+| The audit log becoming a contact list | Audit entries record field names and roles, never phone numbers | `staff.rs`, `students.rs` |
+| Search input breaking queries | `%` and `_` escaped, length capped, parameters bound | `students::list` |
 | Guessing sign-in codes | HMAC storage, 5 attempts per code, 5 codes per phone per hour, per-IP limits | `auth.rs`, `security.rs` |
 | Finding out who is staff | Identical answers and timing for every number | `auth.rs`, `sign_in.rs` |
 | Stolen database leaking sessions | Only SHA-256 of tokens stored | `platform.sessions` |
@@ -330,11 +427,12 @@ One VPS to start:
 - `#[sqlx::test]` gives every Rust test its own fresh database with all
   migrations applied, so tests are independent and run in parallel.
 - `ncrm-core/tests/`: rules directly (isolation between studios, sign-in
-  abuse cases).
+  abuse cases, team and student rules in `people.rs`).
 - `ncrm-api/tests/`: the real router in memory, with a `Capture` code
-  sender; `security_api.rs` attacks each protection.
+  sender; `security_api.rs` attacks each protection; `people_api.rs` runs
+  students and team through each role, bad input and another studio.
 - `web/src/lib/security.test.ts` (Vitest): redirects, gateway paths,
-  header filtering, CSP.
+  header filtering, CSP, and the phone/age/date formatting helpers.
 - The Rust suite also passes as a non-superuser database owner, which is
   how a managed Postgres behaves.
 - Before a milestone ships, the full stack (Postgres, API, production

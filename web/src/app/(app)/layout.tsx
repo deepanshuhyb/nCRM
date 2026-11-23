@@ -1,7 +1,14 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { BottomNav, SignOutButton, StudioSwitcher, ThemeToggle, TopNav } from "@/components/shell-controls";
+import {
+  BottomNav,
+  SignOutButton,
+  StudioSwitcher,
+  ThemeToggle,
+  TopNav,
+  type NavItem,
+} from "@/components/shell-controls";
 import { getMe } from "@/lib/api-server";
 
 /**
@@ -13,6 +20,14 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
   if (!me.studio) redirect("/choose-studio");
   const theme = (await cookies()).get("ncrm_theme")?.value === "emerald" ? "emerald" : "daylight";
+  const can = new Set(me.studio.capabilities);
+  // Only show what the role can open. The API refuses the rest anyway.
+  const nav: NavItem[] = [
+    { href: "/", label: "Home" },
+    ...(can.has("manage_students") ? [{ href: "/students", label: "Students" }] : []),
+    ...(can.has("manage_staff") ? [{ href: "/team", label: "Team" }] : []),
+    { href: "/branches", label: "Branches" },
+  ];
 
   return (
     <div className="has-bottom-nav">
@@ -21,7 +36,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           Skip to content
         </a>
         <div className="font-display mr-2 text-[24px] font-semibold">ncrm</div>
-        <TopNav />
+        <TopNav items={nav} />
         <div className="flex-1" />
         <StudioSwitcher
           current={me.studio.org_id}
@@ -33,7 +48,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <main id="main" className="mx-auto w-full max-w-[1376px] px-[18px] pt-5 pb-16 sm:px-8">
         {children}
       </main>
-      <BottomNav />
+      <BottomNav items={nav} />
     </div>
   );
 }

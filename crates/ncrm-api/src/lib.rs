@@ -8,12 +8,17 @@
 //! - `sign_in`: `/auth/*`.
 //! - `branches`: the first studio-scoped resource, and the pattern the rest
 //!   follow.
+//! - `team`, `students`, `summary`: the team, students with contacts, and
+//!   the home-screen counts.
 
 pub mod branches;
 pub mod error;
 pub mod extract;
 pub mod security;
 pub mod sign_in;
+pub mod students;
+pub mod summary;
+pub mod team;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,7 +26,7 @@ use std::time::Duration;
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{header, HeaderName, HeaderValue, StatusCode};
 use axum::middleware;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use ncrm_core::auth::{AuthConfig, CodeSender};
 use serde_json::{json, Value};
@@ -104,6 +109,16 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/studio", post(sign_in::select_studio))
         .route("/auth/sign-out", post(sign_in::sign_out))
         .route("/branches", get(branches::list).post(branches::create))
+        .route("/summary", get(summary::get))
+        .route("/staff", get(team::list).post(team::hire))
+        .route("/staff/{id}", put(team::update))
+        .route("/students", get(students::list).post(students::create))
+        .route("/students/{id}", get(students::get).put(students::update))
+        .route("/students/{id}/contacts", post(students::add_contact))
+        .route(
+            "/students/{id}/contacts/{contact_id}",
+            delete(students::remove_contact),
+        )
         // Layers run outside-in for requests: the last one added runs first.
         .layer(middleware::from_fn_with_state(
             state.clone(),
