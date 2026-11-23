@@ -14,6 +14,7 @@ pub mod credits;
 pub mod db;
 pub mod enrollments;
 pub mod error;
+pub mod fees;
 pub mod import;
 pub mod orgs;
 pub mod phone;

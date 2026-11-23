@@ -9,6 +9,7 @@ export type Capability =
   | "manage_students"
   | "manage_classes"
   | "manage_fees"
+  | "adjust_fees"
   | "mark_any_attendance"
   | "mark_own_attendance"
   | "view_financials"
@@ -126,6 +127,9 @@ export type Summary = {
   classes_today: number;
   /** Classes in the last week that are over and not fully marked. */
   unmarked: number;
+  /** Fees still to collect; null for roles that don't handle fees. */
+  dues_paise: number | null;
+  students_owing: number | null;
   /** The studio's date, YYYY-MM-DD. */
   today: string;
 };
@@ -317,4 +321,97 @@ export type StudentAttendance = {
   came: number;
   missed: number;
   recent: { on_date: string; batch_name: string; status: AttendanceStatus; drop_in: boolean }[];
+};
+
+// ------------------------------------------------------------------ fees
+
+export type ChargeKind = "monthly" | "pack" | "drop_in" | "other";
+export type PaymentMethod = "cash" | "upi" | "card" | "bank_transfer" | "cheque" | "other";
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  cash: "Cash",
+  upi: "UPI",
+  card: "Card",
+  bank_transfer: "Bank transfer",
+  cheque: "Cheque",
+  other: "Other",
+};
+export const PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[];
+
+export type Charge = {
+  id: string;
+  kind: ChargeKind;
+  description: string;
+  amount_paise: number;
+  paid_paise: number;
+  due_on: string;
+  period_start: string | null;
+  overdue: boolean;
+  created_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
+};
+
+export type Payment = {
+  id: string;
+  student_id: string;
+  student_name: string;
+  receipt_no: number;
+  amount_paise: number;
+  /** Paid ahead: not used by any charge yet. */
+  unallocated_paise: number;
+  method: PaymentMethod;
+  reference: string | null;
+  note: string | null;
+  received_on: string;
+  received_by_name: string;
+  created_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
+};
+
+export type StudentFees = {
+  due_paise: number;
+  overdue_paise: number;
+  advance_paise: number;
+  charges: Charge[];
+  payments: Payment[];
+};
+
+export type Receipt = {
+  payment: Payment;
+  studio_name: string;
+  lines: { description: string; amount_paise: number }[];
+  still_due_paise: number;
+};
+
+export type DueRow = {
+  student_id: string;
+  student_name: string;
+  branch_name: string | null;
+  due_paise: number;
+  overdue_paise: number;
+  oldest_due_on: string;
+};
+
+export type FeesSummary = {
+  /** First day of the first month monthly fees are created for; null when off. */
+  fees_from: string | null;
+  fee_due_day: number;
+  due_paise: number;
+  overdue_paise: number;
+  students_owing: number;
+  /** Null for roles that can't see financial reports. */
+  collected_this_month_paise: number | null;
+};
+
+export type PaymentsList = {
+  from: string;
+  to: string;
+  items: Payment[];
+  total: number;
+  limit: number;
+  offset: number;
+  by_method: { method: PaymentMethod; amount_paise: number; payments: number }[];
+  collected_paise: number;
 };

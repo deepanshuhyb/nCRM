@@ -5,7 +5,7 @@ use axum::extract::State;
 use axum::Json;
 use ncrm_core::access::Capability;
 use ncrm_core::db::TenantTx;
-use ncrm_core::{attendance, batches, plans, students};
+use ncrm_core::{attendance, batches, fees, plans, students};
 use serde::Serialize;
 
 use crate::error::ApiError;
@@ -26,6 +26,10 @@ pub struct Summary {
     pub classes_today: i64,
     /// Classes in the last week that are over and not fully marked.
     pub unmarked: i64,
+    /// Fees still to collect, and how many students owe. `None` for roles
+    /// that don't handle fees.
+    pub dues_paise: Option<i64>,
+    pub students_owing: Option<i64>,
     /// Today's date where the studio is, so the dashboard can mark today
     /// without guessing the time zone.
     pub today: time::Date,
@@ -49,6 +53,12 @@ pub async fn get(State(state): State<AppState>, who: Staff) -> Result<Json<Summa
     let plans = plans::count_active(&mut tx).await?;
     let today = tx.studio_today().await?;
     let (classes_today, unmarked) = attendance::counts(&mut tx).await?;
+    let (dues_paise, students_owing) = if who.0.role.can(Capability::ManageFees) {
+        let (due, owing) = fees::home_counts(&mut tx).await?;
+        (Some(due), Some(owing))
+    } else {
+        (None, None)
+    };
     tx.commit().await?;
     Ok(Json(Summary {
         branches,
@@ -59,6 +69,8 @@ pub async fn get(State(state): State<AppState>, who: Staff) -> Result<Json<Summa
         plans,
         classes_today,
         unmarked,
+        dues_paise,
+        students_owing,
         today,
     }))
 }

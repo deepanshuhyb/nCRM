@@ -76,6 +76,8 @@ fn unique_message(constraint: &str) -> &'static str {
         "plans_org_id_name_key" => "There's already a plan with that name.",
         "enrollments_one_open" => "They're already in that class.",
         "organizations_slug_key" => "That studio address is taken.",
+        "charges_one_per_month" => "That month's fee already exists for this class.",
+        "payments_org_id_receipt_no_key" => "That receipt number was just taken. Try again.",
         _ => "That already exists.",
     }
 }
@@ -86,6 +88,9 @@ fn check_message(constraint: &str) -> &'static str {
     match constraint {
         "credit_moves_balance" => "That's more class credits than they have.",
         "plans_shape" => "That plan's classes and validity don't fit its kind.",
+        "payment_allocations_bounds" => "That's more than is left to pay.",
+        "payment_allocations_voided" => "That payment or charge was cancelled.",
+        "fees_void_is_final" => "That was already cancelled and can't be changed.",
         _ => "Some of that isn't allowed. Check the values and try again.",
     }
 }

@@ -131,6 +131,20 @@ On the Today page each class is a row with its time, a state tag (Marked,
 meter of marks. An instructor's own classes carry the same accent edge as
 on the timetable.
 
+## Money
+
+Amounts are in the display face with tabular figures, formatted the
+Indian way (₹1,85,000). A due amount is neutral; it takes the attention
+colour only once it is overdue. "Paid" is the quiet good tag. Cancelled
+entries stay visible, struck through, with the reason beside them:
+nothing about money disappears from the screen any more than from the
+database.
+
+The payment form says what will happen before Save ("₹1,500 will still
+be due", "the extra is kept as advance") and the button repeats the
+amount ("Record ₹1,000"). A receipt is drawn as paper: a solid card with
+no blur, so the print stylesheet only has to hide the shell.
+
 ## Backdated dates
 
 A join date or class start set earlier than the day it was entered carries

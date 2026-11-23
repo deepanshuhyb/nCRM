@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { BackdatableDate } from "@/components/backdatable-date";
 import { ApiError, apiSend } from "@/lib/api-client";
 import { addDays } from "@/lib/format";
+import { PAYMENT_METHOD_LABEL, PAYMENT_METHODS, type PaymentMethod } from "@/lib/types";
 
 function message(err: unknown) {
   return err instanceof ApiError ? err.message : "Something went wrong. Try again.";
@@ -121,6 +122,7 @@ export function JoinClassForm({
 export function SellPackForm({ studentId, packs }: { studentId: string; packs: { id: string; label: string }[] }) {
   const router = useRouter();
   const [planId, setPlanId] = useState("");
+  const [paid, setPaid] = useState<PaymentMethod | "later">("later");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -130,8 +132,12 @@ export function SellPackForm({ studentId, packs }: { studentId: string; packs: {
     setError(null);
     setBusy(true);
     try {
-      await apiSend("POST", `/students/${studentId}/credits/sell`, { plan_id: planId });
+      await apiSend("POST", `/students/${studentId}/credits/sell`, {
+        plan_id: planId,
+        paid: paid === "later" ? null : { method: paid },
+      });
       setPlanId("");
+      setPaid("later");
       router.refresh();
     } catch (err) {
       setError(message(err));
@@ -157,10 +163,24 @@ export function SellPackForm({ studentId, packs }: { studentId: string; packs: {
             </option>
           ))}
         </select>
+        <label htmlFor="sell-paid" className="sr-only">
+          Paying now or later
+        </label>
+        <select id="sell-paid" className="select" style={{ minHeight: 48 }} value={paid} onChange={(e) => setPaid(e.target.value as PaymentMethod | "later")}>
+          <option value="later">Pay later</option>
+          {PAYMENT_METHODS.map((m) => (
+            <option key={m} value={m}>
+              Paid by {m === "upi" ? "UPI" : PAYMENT_METHOD_LABEL[m].toLowerCase()}
+            </option>
+          ))}
+        </select>
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? "Adding…" : "Add pack"}
         </button>
       </div>
+      <p className="muted m-0 text-[13px]">
+        {paid === "later" ? "The price goes on their fees as due today." : "The price is recorded as paid and gets a receipt."}
+      </p>
       <p role="alert" className="field-error m-0 min-h-[1.2em]">
         {error}
       </p>

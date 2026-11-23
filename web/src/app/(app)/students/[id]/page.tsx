@@ -10,16 +10,18 @@ import {
   getStudentAttendance,
   getStudentCredits,
   getStudentEnrollments,
+  getStudentFees,
   getSummary,
   listBatches,
   listBranches,
   listPlans,
 } from "@/lib/api-server";
 import { ageFrom, formatDate, formatPhone, formatRupees, scheduleSummary } from "@/lib/format";
-import { ATTENDANCE_LABEL, RELATION_LABEL, STATUS_LABEL } from "@/lib/types";
+import { ATTENDANCE_LABEL, PAYMENT_METHOD_LABEL, RELATION_LABEL, STATUS_LABEL } from "@/lib/types";
 
 import { AdjustCredits, JoinClassForm, SellPackForm } from "./student-classes";
 import { AddContactForm, EditStudentForm, RemoveContactButton } from "./student-editors";
+import { AddChargeForm, CancelEntry, TakePaymentForm } from "./student-fees";
 
 export const metadata: Metadata = { title: "Student" };
 
@@ -28,7 +30,9 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
   const can = new Set(me.studio!.capabilities);
   if (!can.has("manage_students")) return <NotAllowed what="students" />;
   const { id } = await params;
-  const [student, branches, enrollments, credits, batches, plans, summary, attendance] = await Promise.all([
+  const canFees = can.has("manage_fees");
+  const canAdjust = can.has("adjust_fees");
+  const [student, branches, enrollments, credits, batches, plans, summary, attendance, fees] = await Promise.all([
     getStudent(id),
     listBranches(),
     getStudentEnrollments(id),
@@ -37,7 +41,9 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
     listPlans(),
     getSummary(),
     getStudentAttendance(id),
+    canFees ? getStudentFees(id) : null,
   ]);
+  const short = (iso: string) => formatDate(iso).replace(/ \d{4}$/, "");
   const current = enrollments.filter((e) => e.ended_on === null);
   const past = enrollments.filter((e) => e.ended_on !== null);
   const inClass = new Set(current.map((e) => e.batch_id));
@@ -231,6 +237,89 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
           ) : null}
         </section>
       </div>
+
+      {fees ? (
+        <section id="fees" aria-labelledby="fees-title" className="glass flex scroll-mt-6 flex-col gap-4 p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 id="fees-title" className="font-display m-0 text-[20px] font-semibold">
+              Fees
+            </h2>
+            <p className="m-0 text-sm font-semibold">
+              {fees.due_paise > 0 ? (
+                <span className={fees.overdue_paise > 0 ? "attn-text" : ""}>
+                  {formatRupees(fees.due_paise)} to pay
+                  {fees.overdue_paise > 0 ? `, ${formatRupees(fees.overdue_paise)} of it overdue` : ""}
+                </span>
+              ) : fees.advance_paise > 0 ? (
+                <span>{formatRupees(fees.advance_paise)} paid in advance</span>
+              ) : (
+                <span className="soft">Nothing to pay</span>
+              )}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-start gap-[18px]">
+            <div className="flex min-w-0 flex-[3_1_380px] flex-col gap-3">
+              {fees.charges.length === 0 ? (
+                <p className="soft m-0">No charges yet. Monthly fees, packs and anything you add by hand appear here.</p>
+              ) : (
+                <ul className="m-0 flex list-none flex-col gap-1.5 p-0" aria-label="Charges">
+                  {fees.charges.slice(0, 12).map((c) => {
+                    const left = c.amount_paise - c.paid_paise;
+                    return (
+                      <li key={c.id} className="row flex flex-wrap items-center justify-between gap-x-3 gap-y-1 p-3">
+                        <span className="min-w-0 flex-1">
+                          <span className={`block font-semibold ${c.voided_at ? "muted line-through" : ""}`}>{c.description}</span>
+                          <span className="muted text-[13px]">
+                            {c.voided_at ? `Cancelled: ${c.void_reason}` : `Due ${short(c.due_on)}`}
+                          </span>
+                        </span>
+                        <span className="flex flex-col items-end">
+                          <span className={`font-bold tabular-nums ${c.voided_at ? "muted line-through" : ""}`}>{formatRupees(c.amount_paise)}</span>
+                          {c.voided_at ? null : left === 0 ? (
+                            <span className="tag tag-good">Paid</span>
+                          ) : (
+                            <span className={c.overdue ? "tag tag-attn" : "tag tag-quiet"}>
+                              {c.paid_paise > 0 ? `${formatRupees(left)} left` : c.overdue ? "Overdue" : "Not paid"}
+                            </span>
+                          )}
+                        </span>
+                        {canAdjust && !c.voided_at ? <CancelEntry kind="charge" id={c.id} label={c.description} /> : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <AddChargeForm studentId={student.id} today={summary.today} />
+              {fees.payments.length > 0 ? (
+                <>
+                  <h3 className="m-0 text-base font-bold">Payments</h3>
+                  <ul className="m-0 flex list-none flex-col gap-1.5 p-0" aria-label="Payments">
+                    {fees.payments.slice(0, 12).map((p) => (
+                      <li key={p.id} className="row flex flex-wrap items-center justify-between gap-x-3 gap-y-1 p-3">
+                        <span className="min-w-0 flex-1">
+                          <Link href={`/fees/receipts/${p.id}`} className="block font-semibold">
+                            Receipt {p.receipt_no}
+                          </Link>
+                          <span className="muted text-[13px]">
+                            {short(p.received_on)} · {PAYMENT_METHOD_LABEL[p.method]} · {p.received_by_name}
+                            {p.voided_at ? ` · Cancelled: ${p.void_reason}` : ""}
+                          </span>
+                        </span>
+                        <span className={`font-bold tabular-nums ${p.voided_at ? "muted line-through" : ""}`}>{formatRupees(p.amount_paise)}</span>
+                        {canAdjust && !p.voided_at ? <CancelEntry kind="payment" id={p.id} label={`receipt ${p.receipt_no}`} /> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </div>
+            <div className="min-w-0 flex-[2_1_320px]">
+              <TakePaymentForm studentId={student.id} duePaise={fees.due_paise} today={summary.today} />
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section aria-labelledby="attendance-title" className="glass flex flex-col gap-3 p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-3">

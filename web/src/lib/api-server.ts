@@ -8,20 +8,25 @@ import { apiOrigin } from "@/lib/env";
 import type {
   ApiErrorBody,
   AttendanceAlerts,
-  SessionDetail,
-  SessionSummary,
-  StudentAttendance,
   BatchDetail,
   BatchSummary,
   Branch,
   Credits,
+  DueRow,
+  FeesSummary,
   Me,
   Page,
+  PaymentsList,
   Plan,
+  Receipt,
   Room,
+  SessionDetail,
+  SessionSummary,
   StaffMember,
+  StudentAttendance,
   StudentDetail,
   StudentEnrollment,
+  StudentFees,
   StudentListItem,
   Summary,
 } from "@/lib/types";
@@ -178,3 +183,28 @@ export function getAttendanceAlerts(): Promise<AttendanceAlerts> {
 export function getStudentAttendance(id: string): Promise<StudentAttendance> {
   return apiGet<StudentAttendance>(`/students/${checkedId(id)}/attendance`);
 }
+
+// ------------------------------------------------------------------ fees
+
+export const getFeesSummary = (): Promise<FeesSummary> => apiGet<FeesSummary>("/fees/summary");
+
+export function listDues(filters: { branchId?: string; limit?: number; offset?: number } = {}): Promise<Page<DueRow>> {
+  const params = new URLSearchParams();
+  if (filters.branchId) params.set("branch_id", filters.branchId);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.offset) params.set("offset", String(filters.offset));
+  const qs = params.toString();
+  return apiGet<Page<DueRow>>(`/fees/dues${qs ? `?${qs}` : ""}`);
+}
+
+/** Payments received on one day, with totals by method. */
+export function listPayments(day: string): Promise<PaymentsList> {
+  const params = new URLSearchParams({ from: day, to: day, limit: "200" });
+  return apiGet<PaymentsList>(`/payments?${params.toString()}`);
+}
+
+export const getReceipt = (paymentId: string): Promise<Receipt> =>
+  apiGet<Receipt>(`/payments/${encodeURIComponent(paymentId)}`);
+
+export const getStudentFees = (studentId: string): Promise<StudentFees> =>
+  apiGet<StudentFees>(`/students/${encodeURIComponent(studentId)}/fees`);

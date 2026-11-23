@@ -796,7 +796,10 @@ async fn packs_give_credits_that_expire_and_staff_roles_differ(pool: PgPool) {
         &mut t,
         actor(&s.front_desk),
         kid,
-        SellPack { plan_id: pack.id },
+        SellPack {
+            plan_id: pack.id,
+            paid: None,
+        },
     )
     .await
     .unwrap();
@@ -813,6 +816,7 @@ async fn packs_give_credits_that_expire_and_staff_roles_differ(pool: PgPool) {
         kid,
         SellPack {
             plan_id: monthly.id,
+            paid: None,
         },
     )
     .await;
@@ -894,9 +898,17 @@ async fn taking_back_uses_the_soonest_expiring_credits_first(pool: PgPool) {
     )
     .await
     .unwrap();
-    credits::sell(&mut t, actor(&s.owner), kid, SellPack { plan_id: pack.id })
-        .await
-        .unwrap();
+    credits::sell(
+        &mut t,
+        actor(&s.owner),
+        kid,
+        SellPack {
+            plan_id: pack.id,
+            paid: None,
+        },
+    )
+    .await
+    .unwrap();
 
     let after = credits::take_back(
         &mut t,
@@ -1022,9 +1034,17 @@ async fn classes_plans_and_credits_never_cross_studios(pool: PgPool) {
     let hiphop = batches::create(&mut t, actor(&s.owner), class(&s, "Hip-hop", mon_wed_6pm()))
         .await
         .unwrap();
-    credits::sell(&mut t, actor(&s.owner), kid, SellPack { plan_id: pack.id })
-        .await
-        .unwrap();
+    credits::sell(
+        &mut t,
+        actor(&s.owner),
+        kid,
+        SellPack {
+            plan_id: pack.id,
+            paid: None,
+        },
+    )
+    .await
+    .unwrap();
     t.commit().await.unwrap();
 
     let mut theirs = tx(&pool, &other).await;
@@ -1058,7 +1078,16 @@ async fn classes_plans_and_credits_never_cross_studios(pool: PgPool) {
         matches!(&r, Err(Error::Invalid(m)) if m == "Choose one of your classes."),
         "{r:?}"
     );
-    let r = credits::sell(&mut theirs, me, their_kid, SellPack { plan_id: pack.id }).await;
+    let r = credits::sell(
+        &mut theirs,
+        me,
+        their_kid,
+        SellPack {
+            plan_id: pack.id,
+            paid: None,
+        },
+    )
+    .await;
     assert!(matches!(r, Err(Error::Invalid(_))), "{r:?}");
     let mut sneaky = class(&s, "Sneaky", vec![slot(5, time!(10:00), time!(11:00))]);
     sneaky.branch_id = other.north.id;

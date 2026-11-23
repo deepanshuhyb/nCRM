@@ -60,6 +60,8 @@ crates/
     src/credits.rs   class credits from packs and drop-ins
     src/attendance.rs  sessions (one meeting of a class), marks, teacher
                      check-in, cancelling, alerts
+    src/fees.rs      charges, payments and how they settle, receipts, dues,
+                     monthly fees
     src/import.rs    student lists from .xlsx/.csv: safe reading, preview, commit
     src/validate.rs  shared input checks with plain messages
     src/phone.rs     phone number normalization
@@ -78,6 +80,7 @@ crates/
     src/enrollments.rs  /students/{id}/enrollments, /enrollments, credits
     src/import.rs    /students/import: raw file uploads with their own size limit
     src/attendance.rs  /sessions, /attendance/alerts, /students/{id}/attendance
+    src/fees.rs      /fees/..., /payments, /charges, /students/{id}/fees
   ncrm-worker/  background jobs (stub)
 migrations/     SQL, applied in order, embedded into the binaries
 web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
@@ -152,7 +155,14 @@ the same pooled connection starts clean. A test proves this. Full rules:
 | `credit_moves` | a later change to a lot (used, returned, taken back) | Append-only; a trigger keeps each lot between 0 and its size |
 | `sessions` | one meeting of a class on one date ("Hip-hop Beginners, Monday 23 Nov, 18:00") | Created on demand from the weekly slots, for today and the past only. `scheduled` or `cancelled` (with a reason). Holds who taught that day and whether they were there |
 | `attendance` | one student's mark at one session | `present`, `late`, `absent` or `excused`; `drop_in` for someone who isn't a regular; remembers the credit lot it used, or `owes_credit` when there was none |
+| `charges` | money a student owes: a month's fee for a class, a pack that was sold, anything added by hand | Amount in paise; never edited, only *voided* with a reason. One monthly fee per class membership per month, ever |
+| `payments` | money received | Receipt number counting up per studio with no gaps; never edited, only voided |
+| `payment_allocations` | "this much of that payment went to that charge" | A trigger keeps the total within both the payment and the charge |
+| `receipt_counters` | the last receipt number given out in a studio | One row per studio, updated inside the payment's transaction |
 | `audit_log` | something that changed, who did it | Append-only: the app role can insert and read, not change or delete |
+
+`organizations` also holds two fee settings: `fees_from` (the first month
+monthly fees are created for; NULL means off) and `fee_due_day`.
 
 ```
 students ──< student_contacts >── contacts
@@ -164,8 +174,13 @@ students ──< student_contacts >── contacts
    ├──< attendance >─────────────┘
    │        └──▶ credit_lots (the credit this class used)
    │
-   └──< credit_lots ──< credit_moves
-             └──▶ plans
+   ├──< credit_lots ──< credit_moves
+   │         └──▶ plans
+   │
+   ├──< charges ──▶ enrollments (monthly fee) or credit_lots (pack sold)
+   │       ▲
+   │       └── payment_allocations ──┐
+   └──< payments ◀───────────────────┘
 ```
 
 A class's room must be in the class's branch. The database enforces that
@@ -199,6 +214,41 @@ edited; a correction is a new move with a reason. The trigger
 zero or above its original size, so even a bug or two screens saving at
 once can't spend a credit twice.
 
+Money has the tightest grants in the schema. On `charges` and `payments`
+the app role has `SELECT, INSERT` and a *column-level* `UPDATE` on only
+`voided_at`, `voided_by` and `void_reason`: it cannot change an amount, a
+date or a receipt number, and cannot delete. Two triggers finish the job:
+`fees_void_rules` refuses to un-void and removes a voided row's
+allocations in the same statement, and
+`payment_allocations_stay_in_bounds` refuses an allocation that would
+exceed its payment or its charge, or that touches a voided row. The
+allocation's foreign keys include `student_id`, so one student's money
+can't pay another's charge. `fees.rs` tests try each of these as the app
+role and expect a refusal.
+
+### How a payment settles
+
+`fees::settle(student)` runs after anything that changes a student's
+money. It walks the payments that still have unallocated money (oldest
+first) and the charges that are still open (earliest due first) and
+writes allocations until one side runs out. So:
+
+- a payment clears the oldest dues first;
+- paying more than is owed leaves the rest on the payment as an
+  *advance*, which the next charge takes automatically;
+- voiding a payment or a charge frees its allocations, and `settle` moves
+  that money to whatever else is open. Allocations that already exist are
+  never reshuffled, so an old receipt keeps saying what it said;
+- money handed over for a pack at the moment it's sold goes to that pack
+  first (`take_payment(…, towards)`), then follows the rule above.
+
+Monthly fees are created on demand, like sessions:
+`fees::ensure_current_month` runs when the fees pages, a student's fees
+or the home page load, and when someone joins a class on a monthly plan.
+It does nothing until an owner or manager sets `fees_from`. It charges
+active students whose membership has started and hadn't ended before the
+month began; paused students are skipped until they're active again.
+
 ### Concurrency: who wins when two people save at once
 
 | Rule | How it holds |
@@ -209,10 +259,15 @@ once can't spend a credit twice.
 | A credit isn't spent twice | The ledger trigger takes a per-lot advisory lock before summing |
 | Two people marking the same class don't undo each other | Every change to a session first locks its row (`SELECT … FOR UPDATE` in `attendance::markable`), so the second save runs after the first and sees its marks and credits |
 | A session isn't created twice | `sessions` is unique on (studio, class, date, start time) and creation is `INSERT … ON CONFLICT DO NOTHING` |
+| One student's money changes one step at a time | A per-student advisory lock (`ncrm:fees:<student>:<studio>`), taken by `fees.rs` before it reads a balance and by the allocation trigger |
+| Receipt numbers have no gaps or repeats | The next number comes from updating the studio's `receipt_counters` row inside the payment's transaction: the row lock queues simultaneous payments, a rollback returns the number |
+| A month's fees aren't created twice | Unique index on (class membership, month), plus a per-studio `fees-month` lock so the second page load waits and finds nothing to do |
 
-The first five each have a test that runs two transactions at once and
-checks the second one is refused or, for marking, waits its turn and then
-spends no second credit. The last is a plain uniqueness constraint.
+Booking, capacity, owners, credits, marking and payments each have a
+test that runs two transactions at once and checks the second one is
+refused or waits its turn and then does the right thing (no second
+credit spent, the next receipt number, no charge paid twice). The rest
+are uniqueness constraints.
 
 ### Dates and times
 
@@ -318,6 +373,10 @@ referrer policy, permissions policy, HSTS in production) are set in
 | `/attendance` ("Today") | everyone | One day's classes with how marking stands, by branch; step back a day at a time (never forward). Beside it: earlier classes still not marked, and students who missed three in a row. Instructors see alerts for their own classes |
 | `/attendance/[id]` | everyone; marking for the class's teacher and anyone who marks any class | The roster with Present / Late / Absent / Excused per student, "Everyone's here", one Save that sends only what changed; teacher check-in and substitute; add or remove a drop-in; cancel with a reason, or bring back |
 | `/more` | everyone | On phones, the pages that don't fit in the bottom bar |
+| `/fees` | manage fees | To collect, overdue and (owners, managers) collected this month; switch monthly fees on; who owes, most overdue first, by branch; the day's payments with totals by method |
+| `/fees/receipts/[id]` | manage fees | One receipt, laid out to print or save as PDF |
+| `/students/[id]` | (now also) | Fees: balance, charges, payments, take a payment, add a charge; cancel either (adjust fees). Selling a pack can record the payment in the same step |
+| `/` | (now also) | "Fees to collect" tile for roles that handle fees |
 | `/` | (now also) | "Classes today" tile, in the attention colour when classes need marking |
 | `/students/[id]` | (now also) | Attendance: came and missed in the last 30 days, and the latest marks |
 
@@ -388,7 +447,7 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `POST /auth/code`, `/auth/verify` | nothing (rate limited) | Sign-in, see below |
 | `GET /auth/me` | session | Who am I, which studio, which capabilities |
 | `POST /auth/studio`, `/auth/sign-out` | session | Switch studio, sign out |
-| `GET /summary` | view studio | Counts for the home page (branches, students, team, classes, plans, classes today, classes needing marks) and the studio's date |
+| `GET /summary` | view studio | Counts for the home page (branches, students, team, classes, plans, classes today, classes needing marks) and the studio's date. `dues_paise` and `students_owing` are null unless the role handles fees |
 | `GET, POST /branches` | view / manage branches | List, add |
 | `GET, POST /staff` | manage staff | List the team, add someone |
 | `PUT /staff/{id}` | manage staff | Replace name, phone, role, branch, active |
@@ -407,7 +466,7 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `GET, POST /students/{id}/enrollments` | manage students | Their classes; put them in one |
 | `POST /enrollments/{id}/end` | manage students | Take them out from today |
 | `GET /students/{id}/credits` | manage students | Usable classes, next expiry, every lot |
-| `POST /students/{id}/credits/sell` | manage fees | Sell a pack or drop-in |
+| `POST /students/{id}/credits/sell` | manage fees | Sell a pack or drop-in: `{plan_id, paid?: {method, reference?}}`. The price becomes a charge, paid on the spot or left due |
 | `POST /students/{id}/credits/give`, `/take-back` | manage classes | Free classes or take some back, with a reason |
 | `POST /students/import/preview?branch_id=` | manage students | Body: the .xlsx or .csv file. What would happen to every row; writes nothing |
 | `POST /students/import?branch_id=` | manage students | Same file: adds the ready rows in one transaction, skips the rest |
@@ -419,6 +478,15 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `POST /sessions/{id}/cancel`, `/restore` | mark any attendance | Cancel with a reason (marks cleared, credits returned); undo it |
 | `GET /attendance/alerts` | view studio | Classes in the last 7 days that are over and not fully marked; students whose last three or more marks in a class are absences. Instructors get their own classes only |
 | `GET /students/{id}/attendance` | manage students | Came and missed in the last 30 days, and the latest marks |
+| `GET /fees/summary` | manage fees | To collect, overdue, students owing, fee settings; `collected_this_month_paise` is null without "view financials" |
+| `PUT /fees/settings` | manage classes | `{fees_from, fee_due_day}`: start monthly fees from a month (this one or later), or `null` to stop |
+| `GET /fees/dues?branch_id=&limit=&offset=` | manage fees | Students who owe, most overdue first |
+| `GET /students/{id}/fees` | manage fees | Balance (due, overdue, advance), charges and payments |
+| `POST /students/{id}/charges` | manage fees | Add a charge by hand: `{description, amount_paise, due_on?}` |
+| `POST /students/{id}/payments` | manage fees | Record money: `{amount_paise, method, reference?, note?, received_on?}` (today or up to 60 days back). Returns the receipt |
+| `GET /payments?from=&to=` | manage fees | Payments in a range with totals by method. Without "view financials": the last 7 days only |
+| `GET /payments/{id}` | manage fees | The receipt: what the money went to, and what's still owed |
+| `POST /payments/{id}/void`, `POST /charges/{id}/void` | adjust fees | Cancel with a reason. Nothing is deleted |
 
 The two import routes take the file as the raw body, up to 2 MB, with
 Content-Type one of the spreadsheet types (or `application/octet-stream`).
@@ -479,7 +547,8 @@ do inside it:
 | Manage staff | ✓ | ✓ | | |
 | Manage students (and put them in classes) | ✓ | ✓ | ✓ | |
 | Manage classes: timetable, prices, free credits | ✓ | ✓ | | |
-| Manage fees (sell packs, payments) | ✓ | ✓ | ✓ | |
+| Manage fees (sell packs, add charges, take payments) | ✓ | ✓ | ✓ | |
+| Adjust fees (cancel a charge or a payment) | ✓ | ✓ | | |
 | Mark any class's attendance | ✓ | ✓ | ✓ | |
 | Mark own classes' attendance | ✓ | ✓ | ✓ | ✓ |
 | View financial reports | ✓ | ✓ | | |
@@ -530,6 +599,15 @@ page. On top of that:
 - Adding a drop-in means searching students, which needs "manage
   students", so in the dashboard it's offered to the front desk and up.
 
+Money follows the oldest rule in bookkeeping: the person who takes the
+cash can't also erase the record of it. The front desk adds charges and
+records payments; cancelling either needs "adjust fees" (owners and
+managers), a reason, and leaves the row in place marked cancelled.
+The front desk sees what is owed and the last week of payments (to tally
+the drawer and reprint a receipt), but not the month's collection, which
+needs "view financials". Instructors see no money at all: `/summary`
+sends them `null`.
+
 Front desk sells packs (money comes in) but can't give classes away or
 take credits back, because that's revenue the studio doesn't collect.
 Those need "manage classes", a reason, and leave an audit entry.
@@ -552,6 +630,12 @@ Those need "manage classes", a reason, and leave an audit entry.
 | A credit lost when a mark is corrected or a class cancelled | The mark remembers its lot; changing it, removing a drop-in or cancelling returns the credit to that lot first | `attendance.rs`, `credits::return_one` |
 | Attendance rewritten long after the fact | 7 days for instructors, 90 for everyone; every save audited with counts | `attendance::markable` |
 | Marking a class that hasn't happened | Sessions exist only for today and earlier | `attendance::ensure` |
+| Money quietly edited or deleted | App role can only insert, and fill the three void columns; amounts and receipt numbers are immutable; voids are final | migration 0007 grants, `fees_void_rules` |
+| Cash taken and its record removed | Recording is front desk; cancelling is owner/manager only, with a reason, audited | `Capability::AdjustFees`, `fees.rs` |
+| A charge paid twice, or more allocated than was paid | Allocation trigger with a per-student lock | `payment_allocations_stay_in_bounds` |
+| One student's payment used for another | Allocation foreign keys include `student_id` | migration 0007 |
+| Surprise charges when fees ship | Nothing is created until `fees_from` is set; a waived monthly fee never comes back | `fees::ensure_current_month`, `charges_one_per_month` |
+| Payment references piling up in the audit log | Audit entries carry amounts, methods and receipt numbers, never the reference | `fees.rs` |
 | Error text showing internals | Constraint names and parser messages turned into sentences | `ncrm_core::error`, `extract.rs` |
 | A booby-trapped spreadsheet | 2 MB cap; zip entries actually unpacked under a 30 MB cap before parsing; cells streamed with row and column caps; old .xls refused; parsing on a blocking thread | `import.rs` |
 | A cross-site form posting a file | Upload routes accept only spreadsheet content types | `ncrm-api/src/import.rs` |

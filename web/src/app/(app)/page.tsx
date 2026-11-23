@@ -3,14 +3,15 @@ import Link from "next/link";
 
 import { Grain } from "@/components/grain";
 import { getMe, getSummary } from "@/lib/api-server";
+import { formatRupees } from "@/lib/format";
 import { ROLE_LABEL } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Home" };
 
 /**
- * The owner's home. Classes, attendance and fees aren't built yet, so the
- * hero is the setup checklist (each step done when its data exists) and
- * the tiles show real counts or say plainly what will appear.
+ * Home. The hero is the setup checklist (each step done when its data
+ * exists); the tiles show today's real numbers. Money only appears for
+ * roles that handle fees: the API sends null to everyone else.
  */
 export default async function HomePage() {
   const [me, summary] = await Promise.all([getMe(), getSummary()]);
@@ -54,7 +55,7 @@ export default async function HomePage() {
       action: can.has("manage_students") ? { href: "/students/new", label: "Add a student" } : null,
       view: can.has("manage_students") ? "/students" : null,
     },
-    { title: "Connect WhatsApp", done: false, detail: "Comes after fees", action: null, view: null },
+    { title: "Connect WhatsApp", done: false, detail: "Comes next", action: null, view: null },
   ];
   const remaining = steps.filter((s) => !s.done).length;
 
@@ -137,6 +138,19 @@ export default async function HomePage() {
             href="/attendance"
             attention={summary.unmarked > 0}
           />
+          {summary.dues_paise !== null ? (
+            <Tile
+              label="Fees to collect"
+              value={formatRupees(summary.dues_paise)}
+              note={
+                summary.dues_paise > 0
+                  ? `From ${summary.students_owing} ${summary.students_owing === 1 ? "student" : "students"}`
+                  : "Nobody owes anything"
+              }
+              href="/fees"
+              wide
+            />
+          ) : null}
         </section>
       </div>
     </div>
@@ -149,29 +163,32 @@ function Tile({
   note,
   href,
   attention,
+  wide,
 }: {
   label: string;
   value: string;
   note: string;
   href: string | null;
   attention?: boolean;
+  /** Spans both columns; for long values like money. */
+  wide?: boolean;
 }) {
   const body = (
     <>
       <span className="muted text-sm font-medium">{label}</span>
-      <span className="font-display text-[48px] leading-none font-semibold">{value}</span>
+      <span className={`font-display leading-none font-semibold tabular-nums ${wide ? "text-[36px]" : "text-[48px]"}`}>{value}</span>
       <span className={attention ? "attn-text text-[13px] font-semibold" : "soft text-[13px]"}>{note}</span>
     </>
   );
   return href ? (
     <Link
       href={href}
-      className={`glass ${attention ? "glass-attn" : ""} flex flex-col justify-between gap-4 p-[22px] no-underline`}
+      className={`glass ${attention ? "glass-attn" : ""} ${wide ? "col-span-2" : ""} flex flex-col justify-between gap-4 p-[22px] no-underline`}
       style={{ color: "inherit" }}
     >
       {body}
     </Link>
   ) : (
-    <div className="glass flex flex-col justify-between gap-4 p-[22px]">{body}</div>
+    <div className={`glass ${wide ? "col-span-2" : ""} flex flex-col justify-between gap-4 p-[22px]`}>{body}</div>
   );
 }

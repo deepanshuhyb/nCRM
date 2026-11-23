@@ -61,6 +61,9 @@ pub struct Expiry {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SellPack {
     pub plan_id: Uuid,
+    /// Set when they paid on the spot; otherwise the price is left due.
+    #[serde(default)]
+    pub paid: Option<crate::fees::PaidNow>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -207,6 +210,24 @@ pub async fn sell(
     .await?;
     // New credits first pay for classes already attended without one.
     crate::attendance::settle_owed(tx, actor, student_id).await?;
+    // The price becomes a charge: paid now, or left on their dues.
+    crate::fees::charge_for_sale(
+        tx,
+        actor,
+        student_id,
+        crate::fees::Sale {
+            lot_id,
+            kind: if kind == PlanKind::DropIn {
+                crate::fees::ChargeKind::DropIn
+            } else {
+                crate::fees::ChargeKind::Pack
+            },
+            description: plan_name,
+            amount_paise: price,
+            paid: sale.paid,
+        },
+    )
+    .await?;
     summary(tx, student_id).await
 }
 

@@ -16,6 +16,108 @@ Template:
 
 ---
 
+## 2026-11-23: Money that can't be edited, only cancelled
+
+**Context:** fees: what students owe, what they paid, receipts.
+
+**What wasn't obvious:** the dangerous user of a fee system is an
+ordinary one with a reason to tidy up: the cash is short, so a payment is
+edited down or deleted. Checking roles in the application isn't enough
+on its own, because one forgotten check or one bug rewrites history.
+
+**What we did:** three layers.
+1. *Roles.* The front desk records charges and payments. Cancelling
+   either is a separate capability, "adjust fees", held by owners and
+   managers, and needs a written reason.
+2. *Nothing is ever edited or deleted.* A cancelled charge or payment
+   stays in its table with `voided_at`, who and why. Its receipt number
+   stays with it.
+3. *The database enforces 2 by itself.* The app's database role has
+   `INSERT` on `charges` and `payments`, and `UPDATE` on only the three
+   void columns (Postgres can grant per column:
+   `GRANT UPDATE (voided_at, voided_by, void_reason) ON payments`). So
+   `UPDATE payments SET amount_paise = …` fails with "permission denied"
+   even from our own code. A trigger makes a void final.
+
+**Consequences:** fixing a typo means cancel and re-enter, by a manager.
+That friction is the point. Discounts aren't modelled yet: cancel the
+charge and add one for the right amount (in the plan).
+
+## 2026-11-23: How a payment finds what it pays for
+
+**Context:** a parent pays ₹3,000; the student owes last month's ₹2,500
+and a ₹1,200 costume.
+
+**What wasn't obvious:**
+- Balance alone ("owes ₹3,700, paid ₹3,000") can't say *which* fee is
+  overdue or what a receipt was for, so payments have to be linked to
+  charges: an *allocation* table.
+- `sum()` of a `bigint` column is `numeric` in Postgres, not `bigint`,
+  and SQLx refuses to read it into an `i64`. Every sum in `fees.rs` is
+  cast: `coalesce(sum(x), 0)::bigint`.
+- If the front desk had to choose what each payment is for, they'd get
+  it wrong on a busy evening.
+
+**What we did:** allocation is automatic. `fees::settle` pairs unspent
+money (oldest payment first) with open charges (earliest due first).
+Extra money stays on the payment as an advance and is used by the next
+charge. Existing allocations are never moved, so a receipt printed last
+week still matches the books. One exception to oldest-first: money taken
+at the moment a pack is sold pays that pack, because that's what the
+customer handed it over for.
+
+A trigger checks every allocation against both its payment and its
+charge, under a per-student advisory lock that `fees.rs` takes too, so
+two tills taking money for the same student queue up instead of both
+paying the same fee.
+
+**Consequences:** after a cancellation, money can end up on a different
+charge than a person would have picked (it follows the rule, not
+intent). The receipt always shows where it went. Dues and totals are
+computed from the tables on each request, which is fine for a studio's
+size; the analytics phase adds daily rollups.
+
+## 2026-11-23: Receipt numbers with no gaps
+
+**Context:** receipts are numbered 1, 2, 3… per studio. Accountants and
+tax rules expect no gaps and no repeats.
+
+**What wasn't obvious:** a Postgres sequence is the obvious tool and the
+wrong one: sequences are shared across studios, and they deliberately
+don't roll back, so a failed payment burns a number and leaves a gap.
+
+**What we did:** a `receipt_counters` row per studio. Taking a number is
+one statement inside the payment's transaction:
+`INSERT … ON CONFLICT (org_id) DO UPDATE SET last_no = last_no + 1
+RETURNING last_no`. The row lock makes two payments at once take turns;
+if the payment fails, the update rolls back with it and the number is
+free again.
+
+**Consequences:** payments in one studio are recorded one at a time,
+which is invisible at this scale. A cancelled payment keeps its number.
+
+## 2026-11-23: Monthly fees only once the studio says go
+
+**Context:** students on a monthly plan owe a fee each month.
+
+**What wasn't obvious:** shipping "create this month's fees
+automatically" would, on the first page load after an update, bill every
+student for the current month, including the ones who already paid in
+cash last week and are tracked in a notebook.
+
+**What we did:** `organizations.fees_from` is NULL until an owner or
+manager picks the first month. From then on fees are created on demand
+(the same idea as sessions): one charge per class membership per month,
+guarded by a unique index that counts cancelled charges too, so a waived
+month stays waived. New joiners on a monthly plan are charged the day
+they join. Paused students aren't charged until they're active again.
+
+**Consequences:** a fee is for the whole month whatever day they joined
+or left; staff cancel and re-add for part months until discounts exist.
+Months before `fees_from` are entered by hand as an "old balance" charge.
+The fees pages are GET requests that can create rows; like sessions,
+the rows are fully determined by the studio's own data.
+
 ## 2026-11-23: Sessions are made when someone looks, not ahead of time
 
 **Context:** attendance needs one row per class meeting ("Hip-hop

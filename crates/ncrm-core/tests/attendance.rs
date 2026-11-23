@@ -180,9 +180,17 @@ async fn world(pool: &PgPool, slug: &str) -> World {
         .await
         .unwrap();
     }
-    credits::sell(&mut t, me, bela, SellPack { plan_id: pack })
-        .await
-        .unwrap();
+    credits::sell(
+        &mut t,
+        me,
+        bela,
+        SellPack {
+            plan_id: pack,
+            paid: None,
+        },
+    )
+    .await
+    .unwrap();
     t.commit().await.unwrap();
     World {
         org,
@@ -334,9 +342,17 @@ async fn coming_to_class_spends_credits_and_corrections_give_them_back(pool: PgP
     attendance::mark(&mut t, desk, id, marks(&[(w.chirag, Present)]))
         .await
         .unwrap();
-    let after = credits::sell(&mut t, desk, w.chirag, SellPack { plan_id: w.pack })
-        .await
-        .unwrap();
+    let after = credits::sell(
+        &mut t,
+        desk,
+        w.chirag,
+        SellPack {
+            plan_id: w.pack,
+            paid: None,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(after.available, 1, "two bought, one already owed");
     let s = attendance::get(&mut t, desk, id).await.unwrap();
     assert!(!row(&s, w.chirag).owes_credit);
@@ -487,9 +503,17 @@ async fn drop_ins_join_one_class_and_cancelling_gives_credits_back(pool: PgPool)
     let id = session_on(&mut t, &w, w.today).await;
     let desk = actor(&w.desk);
     let visitor = new_student(&mut t, actor(&w.owner), "Visitor").await;
-    credits::sell(&mut t, desk, visitor, SellPack { plan_id: w.pack })
-        .await
-        .unwrap();
+    credits::sell(
+        &mut t,
+        desk,
+        visitor,
+        SellPack {
+            plan_id: w.pack,
+            paid: None,
+        },
+    )
+    .await
+    .unwrap();
 
     let s = attendance::add_drop_in(
         &mut t,

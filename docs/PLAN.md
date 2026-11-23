@@ -65,7 +65,14 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 
 ## 4. Fees and reminders
 
-- [ ] Dues, receipts, Razorpay payment links
+- [x] Charges and payments in paise; payments settle the oldest dues first, extra is kept as advance
+- [x] Monthly fees created on demand once the studio switches them on; packs become charges when sold
+- [x] Receipts with gapless numbers per studio, printable; dues list; the day's payments by method
+- [x] Cancelling a charge or payment: owners and managers only, with a reason, nothing deleted
+- [ ] Discounts and part waivers on a charge (today: cancel it and add a new one)
+- [ ] Earlier months for a studio that joins mid-year (today: added by hand as "old balance")
+- [ ] Razorpay payment links and automatic matching (needs the studio's keys)
+- [ ] Send the receipt on WhatsApp (after phase 3)
 - [ ] Reminder schedules with escalation and fallback
 - [ ] Message wallet metering per studio
 

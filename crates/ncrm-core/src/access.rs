@@ -48,8 +48,12 @@ pub enum Capability {
     /// Set up rooms, classes, schedules and prices; give or take back free
     /// class credits. The shape of the business, so not front desk.
     ManageClasses,
-    /// Sell class packs, record payments, issue receipts.
+    /// Sell class packs, add charges, record payments, issue receipts.
     ManageFees,
+    /// Cancel a charge or a recorded payment (waivers, refunds, mistakes).
+    /// Kept away from the front desk: whoever takes the cash shouldn't be
+    /// able to make the record of it disappear.
+    AdjustFees,
     /// Mark attendance for any class.
     MarkAnyAttendance,
     /// Mark attendance for classes the person teaches.
@@ -61,13 +65,14 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Capability; 10] = [
+    pub const ALL: [Capability; 11] = [
         Capability::ViewStudio,
         Capability::ManageBranches,
         Capability::ManageStaff,
         Capability::ManageStudents,
         Capability::ManageClasses,
         Capability::ManageFees,
+        Capability::AdjustFees,
         Capability::MarkAnyAttendance,
         Capability::MarkOwnAttendance,
         Capability::ViewFinancials,

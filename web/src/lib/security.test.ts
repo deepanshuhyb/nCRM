@@ -62,6 +62,16 @@ describe("apiTarget", () => {
     expect(apiTarget(API, ["sessions-admin"], "")).toBeNull();
   });
 
+  it("reaches fees", () => {
+    const id = "0b8f3e1c-1f2a-4c3d-9e8f-123456789abc";
+    expect(apiTarget(API, ["fees", "dues"], "?branch_id=" + id)?.toString()).toBe(`${API}/fees/dues?branch_id=${id}`);
+    expect(apiTarget(API, ["payments", id, "void"], "")?.pathname).toBe(`/payments/${id}/void`);
+    expect(apiTarget(API, ["charges", id, "void"], "")?.pathname).toBe(`/charges/${id}/void`);
+    expect(apiTarget(API, ["students", id, "payments"], "")?.pathname).toBe(`/students/${id}/payments`);
+    expect(apiTarget(API, ["fee"], "")).toBeNull();
+    expect(apiTarget(API, ["payouts"], "")).toBeNull();
+  });
+
   it.each([
     [[]],
     [["healthz"]],

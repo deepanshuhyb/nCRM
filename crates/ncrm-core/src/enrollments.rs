@@ -218,6 +218,12 @@ pub async fn enroll(
         },
     )
     .await?;
+    // On a monthly plan, this month's fee exists from the moment they
+    // join (when the studio has monthly fees switched on), so the front
+    // desk can collect it there and then.
+    if new.plan_id.is_some() {
+        crate::fees::ensure_current_month(tx).await?;
+    }
     for_student(tx, student_id).await
 }
 

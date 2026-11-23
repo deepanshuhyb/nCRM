@@ -14,8 +14,9 @@ export function navFor(capabilities: Capability[]): NavItem[] {
   return [
     { href: "/", label: "Home" },
     { href: "/attendance", label: "Today" },
-    { href: "/classes", label: "Classes" },
     ...(can.has("manage_students") ? [{ href: "/students", label: "Students" }] : []),
+    ...(can.has("manage_fees") ? [{ href: "/fees", label: "Fees" }] : []),
+    { href: "/classes", label: "Classes" },
     ...(can.has("manage_staff") ? [{ href: "/team", label: "Team" }] : []),
     { href: "/branches", label: "Branches" },
   ];

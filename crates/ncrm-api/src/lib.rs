@@ -17,6 +17,7 @@ pub mod classes;
 pub mod enrollments;
 pub mod error;
 pub mod extract;
+pub mod fees;
 pub mod import;
 pub mod plans;
 pub mod security;
@@ -159,6 +160,16 @@ pub fn router(state: AppState) -> Router {
         .route("/sessions/{id}/cancel", post(attendance::cancel))
         .route("/sessions/{id}/restore", post(attendance::restore))
         .route("/attendance/alerts", get(attendance::alerts))
+        .route("/fees/summary", get(fees::summary))
+        .route("/fees/settings", put(fees::set_settings))
+        .route("/fees/dues", get(fees::dues))
+        .route("/payments", get(fees::payments))
+        .route("/payments/{id}", get(fees::receipt))
+        .route("/payments/{id}/void", post(fees::void_payment))
+        .route("/charges/{id}/void", post(fees::void_charge))
+        .route("/students/{id}/fees", get(fees::for_student))
+        .route("/students/{id}/charges", post(fees::add_charge))
+        .route("/students/{id}/payments", post(fees::record_payment))
         .route("/rooms", get(classes::list_rooms))
         .route("/rooms/{id}", put(classes::update_room))
         .route("/branches/{id}/rooms", post(classes::create_room))

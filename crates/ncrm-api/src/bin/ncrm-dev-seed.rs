@@ -377,6 +377,7 @@ async fn main() -> anyhow::Result<()> {
         kids[0],
         SellPack {
             plan_id: plan["8 classes"],
+            paid: None,
         },
     )
     .await?;
@@ -386,6 +387,7 @@ async fn main() -> anyhow::Result<()> {
         kids[1],
         SellPack {
             plan_id: plan["Drop-in"],
+            paid: None,
         },
     )
     .await?;
