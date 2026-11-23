@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { NotAllowed } from "@/components/not-allowed";
+import { Page } from "@/components/ui";
 import { getMe, getSummary, listBranches } from "@/lib/api-server";
 
 import { NewStudentForm } from "./new-student-form";
@@ -13,14 +14,14 @@ export default async function NewStudentPage() {
   const [branches, summary] = await Promise.all([listBranches(), getSummary()]);
 
   return (
-    <div className="mx-auto flex max-w-[760px] flex-col gap-[18px]">
+    <Page narrow>
       <div>
-        <h1 className="font-display m-0 text-[32px] leading-tight font-semibold">Add a student</h1>
-        <p className="soft mt-2 mb-0">
+        <h1 className="h-page">Add a student</h1>
+        <p className="lead">
           Add who we should message about them. For adults, that&apos;s usually themselves.
         </p>
       </div>
       <NewStudentForm branches={branches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }))} today={summary.today} />
-    </div>
+    </Page>
   );
 }

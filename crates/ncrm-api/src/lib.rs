@@ -20,6 +20,7 @@ pub mod extract;
 pub mod fees;
 pub mod import;
 pub mod plans;
+pub mod reports;
 pub mod security;
 pub mod sign_in;
 pub mod students;
@@ -160,6 +161,10 @@ pub fn router(state: AppState) -> Router {
         .route("/sessions/{id}/cancel", post(attendance::cancel))
         .route("/sessions/{id}/restore", post(attendance::restore))
         .route("/attendance/alerts", get(attendance::alerts))
+        .route("/reports/attendance", get(reports::attendance))
+        .route("/reports/students", get(reports::students))
+        .route("/reports/fees", get(reports::fees))
+        .route("/batches/{id}/history", get(reports::class_history))
         .route("/fees/summary", get(fees::summary))
         .route("/fees/settings", put(fees::set_settings))
         .route("/fees/dues", get(fees::dues))

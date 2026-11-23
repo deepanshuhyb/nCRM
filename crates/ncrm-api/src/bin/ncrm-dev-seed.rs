@@ -12,11 +12,13 @@
 
 use anyhow::{bail, Context};
 use ncrm_core::access::Actor;
+use ncrm_core::attendance::{self, AttendanceStatus, DayQuery, Mark, Marks};
 use ncrm_core::batches::{self, NewBatch, Slot};
 use ncrm_core::branches::{self, NewBranch};
 use ncrm_core::credits::{self, GiveCredits, SellPack};
 use ncrm_core::db::{self, TenantTx};
 use ncrm_core::enrollments::{self, NewEnrollment};
+use ncrm_core::fees::{self, FeeSettings, NewPayment, PaymentMethod};
 use ncrm_core::orgs::{self, NewOrganization};
 use ncrm_core::plans::{self, NewPlan, PlanKind};
 use ncrm_core::rooms::{self, NewRoom};
@@ -66,11 +68,23 @@ async fn main() -> anyhow::Result<()> {
         if !already {
             staff::create(&mut tx, person(&name, &phone, StaffRole::Owner)).await?;
         }
+        let owner: (Uuid, StaffRole) = sqlx::query_as(
+            "SELECT id, role FROM staff WHERE role = 'owner' AND active ORDER BY created_at LIMIT 1",
+        )
+        .fetch_one(tx.conn())
+        .await?;
         tx.commit().await?;
         println!(
             "Rhythm House already exists. {phone} can sign in as {}.",
             if already { "before" } else { "a new owner" }
         );
+        let me = Actor {
+            staff_id: owner.0,
+            role: owner.1,
+        };
+        if history(&pool, org.id, me).await? {
+            println!("Added four weeks of attendance and this month's payments, so the graphs have something to show.");
+        }
         return Ok(());
     }
 
@@ -403,9 +417,10 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
     tx.commit().await?;
+    history(&pool, org.id, me).await?;
 
     println!(
-        "Created Rhythm House: 3 branches, 10 classes, {} students.",
+        "Created Rhythm House: 3 branches, 10 classes, {} students, four weeks of history.",
         kids.len()
     );
     println!("Sign in at the dashboard with {phone}. The code is printed in the API's output.");
@@ -419,4 +434,190 @@ fn person(name: &str, phone: &str, role: StaffRole) -> NewStaff {
         role,
         branch_id: None,
     }
+}
+
+/// A number from 0 to 99 that is always the same for the same inputs, so
+/// the demo looks the same every time it's built.
+fn dice(id: Uuid, salt: i64) -> i64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ (salt as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    for b in id.as_bytes() {
+        h = (h ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    ((h >> 33) % 100) as i64
+}
+
+/// Give the demo studio a past: students who joined over the last months,
+/// four weeks of marked attendance, monthly fees and some payments. Without
+/// it every graph on the dashboard is a single bar.
+///
+/// Does nothing (and says so by returning false) once any class before
+/// today has been marked. The backdating below uses plain SQL where the
+/// app has no "change the past" feature; that's acceptable here because
+/// this binary refuses to run outside local development.
+async fn history(pool: &sqlx::PgPool, org_id: Uuid, me: Actor) -> anyhow::Result<bool> {
+    let mut tx = TenantTx::begin(pool, org_id).await?;
+    let today = tx.studio_today().await?;
+    let has_past: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM sessions s JOIN attendance a ON a.session_id = s.id
+                         WHERE s.on_date < $1)",
+    )
+    .bind(today)
+    .fetch_one(tx.conn())
+    .await?;
+    if has_past {
+        return Ok(false);
+    }
+
+    // Classes have been running for two months; students joined over the
+    // last five, and have been in their classes for at least six weeks.
+    sqlx::query("UPDATE batches SET starts_on = least(starts_on, $1)")
+        .bind(today - Duration::days(60))
+        .execute(tx.conn())
+        .await?;
+    sqlx::query(
+        "UPDATE students
+            SET joined_on = least(joined_on, $1::date - (45 + abs(hashtext(id::text)) % 110))",
+    )
+    .bind(today)
+    .execute(tx.conn())
+    .await?;
+    sqlx::query("UPDATE enrollments SET starts_on = least(starts_on, $1) WHERE ended_on IS NULL")
+        .bind(today - Duration::days(45))
+        .execute(tx.conn())
+        .await?;
+    // A handful joined this month and last, so growth isn't flat.
+    sqlx::query(
+        "UPDATE students SET joined_on = $1::date - (abs(hashtext(id::text)) % 40)
+          WHERE id IN (SELECT id FROM students ORDER BY name LIMIT 7)",
+    )
+    .bind(today)
+    .execute(tx.conn())
+    .await?;
+    sqlx::query(
+        "UPDATE enrollments e SET starts_on = greatest(e.starts_on, s.joined_on)
+           FROM students s WHERE s.id = e.student_id AND e.ended_on IS NULL",
+    )
+    .execute(tx.conn())
+    .await?;
+
+    // Most students pay monthly. The few holding packs keep paying per
+    // class, so credits (and "owes a class") still show up, without a third
+    // of the studio owing.
+    sqlx::query(
+        "UPDATE enrollments e
+            SET plan_id = (SELECT id FROM plans WHERE kind = 'monthly' AND active
+                            ORDER BY price_paise LIMIT 1)
+          WHERE e.plan_id IS NULL AND e.ended_on IS NULL
+            AND NOT EXISTS (SELECT 1 FROM credit_lots l
+                             WHERE l.org_id = e.org_id AND l.student_id = e.student_id)",
+    )
+    .execute(tx.conn())
+    .await?;
+
+    // Four weeks of classes, oldest first. Most people come; one student
+    // has missed their last three, so the alert has something to say.
+    let slipping: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM students WHERE status = 'active' ORDER BY name DESC LIMIT 1",
+    )
+    .fetch_optional(tx.conn())
+    .await?;
+    for back in (0..28).rev() {
+        let date = today - Duration::days(back);
+        let sessions = attendance::day(
+            &mut tx,
+            me,
+            DayQuery {
+                date: Some(date),
+                branch_id: None,
+            },
+        )
+        .await?;
+        for s in sessions.into_iter().filter(|s| s.ended) {
+            let detail = attendance::get(&mut tx, me, s.id).await?;
+            let Some(roster) = detail.roster else {
+                continue;
+            };
+            // Attendance dips a little three weeks ago and recovers.
+            let dip = if (14..21).contains(&back) { 9 } else { 0 };
+            let marks: Vec<Mark> = roster
+                .iter()
+                .filter(|r| r.status.is_none())
+                .map(|r| {
+                    let roll = dice(r.student_id, date.to_julian_day().into()) + dip;
+                    let status = if Some(r.student_id) == slipping && back < 12 {
+                        AttendanceStatus::Absent
+                    } else if roll < 84 {
+                        AttendanceStatus::Present
+                    } else if roll < 89 {
+                        AttendanceStatus::Late
+                    } else if roll < 97 {
+                        AttendanceStatus::Absent
+                    } else {
+                        AttendanceStatus::Excused
+                    };
+                    Mark {
+                        student_id: r.student_id,
+                        status,
+                    }
+                })
+                .collect();
+            if !marks.is_empty() {
+                attendance::mark(&mut tx, me, s.id, Marks { marks }).await?;
+            }
+        }
+    }
+
+    // Monthly fees from this month, and about two in three have paid,
+    // on different days.
+    let month = today.replace_day(1)?;
+    fees::set_settings(
+        &mut tx,
+        me,
+        FeeSettings {
+            fees_from: Some(month),
+            fee_due_day: 5,
+        },
+    )
+    .await?;
+    let owing = fees::dues(
+        &mut tx,
+        me,
+        fees::DuesQuery {
+            limit: Some(200),
+            ..fees::DuesQuery::default()
+        },
+    )
+    .await?;
+    let span = i64::from(today.day());
+    for d in owing.items {
+        let roll = dice(d.student_id, 7);
+        if roll >= 68 {
+            continue;
+        }
+        let method = match roll % 5 {
+            0 | 1 => PaymentMethod::Upi,
+            2 => PaymentMethod::Card,
+            _ => PaymentMethod::Cash,
+        };
+        fees::record_payment(
+            &mut tx,
+            me,
+            d.student_id,
+            NewPayment {
+                // A few pay part of it.
+                amount_paise: if roll % 9 == 0 {
+                    d.due_paise / 2
+                } else {
+                    d.due_paise
+                },
+                method,
+                reference: None,
+                note: None,
+                received_on: Some(today - Duration::days(dice(d.student_id, 11) % span)),
+            },
+        )
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(true)
 }

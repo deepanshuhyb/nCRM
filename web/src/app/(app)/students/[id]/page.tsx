@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { BackdatedPill } from "@/components/backdated-pill";
+import { Dots } from "@/components/graphs";
+import { Tabs } from "@/components/tabs";
+import { Travels } from "@/components/travel";
+import { Page, PageHeader, SectionHeader, Stat } from "@/components/ui";
 import { NotAllowed } from "@/components/not-allowed";
 import { TakeOutButton } from "@/components/take-out-button";
 import {
@@ -16,7 +20,7 @@ import {
   listBranches,
   listPlans,
 } from "@/lib/api-server";
-import { ageFrom, formatDate, formatPhone, formatRupees, scheduleSummary } from "@/lib/format";
+import { ageFrom, formatDate, formatPercent, formatPhone, formatRupees, scheduleSummary } from "@/lib/format";
 import { ATTENDANCE_LABEL, PAYMENT_METHOD_LABEL, RELATION_LABEL, STATUS_LABEL } from "@/lib/types";
 
 import { AdjustCredits, JoinClassForm, SellPackForm } from "./student-classes";
@@ -54,80 +58,38 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
   const branch = branches.find((b) => b.id === student.branch_id);
   const statusClass = student.status === "active" ? "tag tag-good" : student.status === "paused" ? "tag tag-quiet" : "tag tag-attn";
 
-  return (
-    <div className="flex flex-col gap-[18px]">
-      <Link href="/students" className="btn btn-quiet self-start px-0">
-        All students
-      </Link>
+  const marks = [...attendance.recent].reverse();
+  const markedTotal = attendance.came + attendance.missed;
+  const tabs = [
+    { id: "classes", label: "Classes", badge: current.length > 0 ? <span className="tag tag-quiet">{current.length}</span> : undefined },
+    ...(fees
+      ? [
+          {
+            id: "fees",
+            label: "Fees",
+            badge: fees.overdue_paise > 0 ? <span className="tag tag-attn">Overdue</span> : fees.due_paise > 0 ? <span className="tag tag-quiet">Due</span> : undefined,
+          },
+        ]
+      : []),
+    { id: "attendance", label: "Attendance" },
+    { id: "details", label: "Details" },
+  ];
+  const attendanceDots =
+    marks.length === 0 ? null : (
+      <Dots
+        label={`The last ${marks.length} classes, oldest first.`}
+        dots={marks.map((m, i) => ({
+          key: `${m.on_date}-${m.batch_name}-${i}`,
+          tone: m.status === "absent" ? ("attn" as const) : m.status === "excused" ? ("neutral" as const) : m.status === "late" ? ("late" as const) : undefined,
+          tip: `${short(m.on_date)}: ${ATTENDANCE_LABEL[m.status]}, ${m.batch_name}${m.drop_in ? " (drop-in)" : ""}`,
+        }))}
+      />
+    );
 
-      <div className="flex flex-wrap items-stretch gap-[18px]">
-        <section aria-labelledby="student-name" className="glass min-w-0 flex-[3_1_420px] p-6 sm:p-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 id="student-name" className="font-display m-0 text-[32px] leading-tight font-semibold sm:text-[40px]">
-              {student.name}
-            </h1>
-            <span className={statusClass}>{STATUS_LABEL[student.status]}</span>
-          </div>
-          <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-            <div>
-              <dt className="muted text-[13px]">Age</dt>
-              <dd className="font-display m-0 text-[22px] font-semibold">{age ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="muted text-[13px]">Branch</dt>
-              <dd className="m-0 text-base font-semibold">{branch?.name ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="muted text-[13px]">Joined</dt>
-              <dd className="m-0 flex flex-wrap items-center gap-1.5 text-base font-semibold">
-                {formatDate(student.joined_on)}
-                <BackdatedPill date={student.joined_on} enteredOn={student.entered_on} />
-              </dd>
-            </div>
-            <div>
-              <dt className="muted text-[13px]">Contacts</dt>
-              <dd className="font-display m-0 text-[22px] font-semibold">{student.contacts.length}</dd>
-            </div>
-          </dl>
-          {student.notes ? (
-            <div className="row mt-6 p-4">
-              <p className="muted m-0 mb-1 text-[13px]">Notes</p>
-              <p className="m-0 whitespace-pre-line">{student.notes}</p>
-            </div>
-          ) : null}
-        </section>
-
-        <section aria-labelledby="contacts-title" className="glass flex min-w-0 flex-[2_1_340px] flex-col gap-3 p-6">
-          <h2 id="contacts-title" className="font-display m-0 text-[20px] font-semibold">
-            Who we message
-          </h2>
-          {student.contacts.length === 0 ? (
-            <p className="attn-text m-0 font-semibold">No contact yet. Reminders can&apos;t reach anyone.</p>
-          ) : (
-            <ul className="m-0 flex list-none flex-col gap-2 p-0">
-              {student.contacts.map((c) => (
-                <li key={c.contact_id} className="row flex flex-wrap items-center justify-between gap-2 p-3.5">
-                  <span className="min-w-0">
-                    <span className="block font-bold">
-                      {c.name} {c.is_primary ? <span className="tag tag-good ml-1">Main</span> : null}
-                    </span>
-                    <span className="muted text-[13px]">
-                      {RELATION_LABEL[c.relation]}, {formatPhone(c.phone)}
-                      {c.student_count > 1 ? `, also for ${c.student_count - 1} other student${c.student_count > 2 ? "s" : ""}` : ""}
-                    </span>
-                  </span>
-                  <RemoveContactButton studentId={student.id} contactId={c.contact_id} name={c.name} />
-                </li>
-              ))}
-            </ul>
-          )}
-          {student.contacts.length < 4 ? <AddContactForm studentId={student.id} /> : null}
-        </section>
-      </div>
-
-      <div className="flex flex-wrap items-start gap-[18px]">
-        <section aria-labelledby="classes-title" className="glass flex min-w-0 flex-[3_1_420px] flex-col gap-3 p-6">
-          <h2 id="classes-title" className="font-display m-0 text-[20px] font-semibold">
+  const classesPanel = (
+    <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-5">
+        <section aria-labelledby="classes-title" className="panel flex min-w-0 flex-col gap-3 p-5 sm:p-6 lg:col-span-3">
+          <h2 id="classes-title" className="h-section">
             Classes
           </h2>
           {current.length === 0 ? (
@@ -189,8 +151,8 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
           ) : null}
         </section>
 
-        <section aria-labelledby="credits-title" className="glass flex min-w-0 flex-[2_1_340px] flex-col gap-3 p-6">
-          <h2 id="credits-title" className="font-display m-0 text-[20px] font-semibold">
+        <section aria-labelledby="credits-title" className="panel flex min-w-0 flex-col gap-3 p-5 sm:p-6 lg:col-span-2">
+          <h2 id="credits-title" className="h-section">
             Class credits
           </h2>
           <div>
@@ -236,12 +198,13 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
             <AdjustCredits studentId={student.id} available={credits.available} />
           ) : null}
         </section>
-      </div>
+    </div>
+  );
 
-      {fees ? (
-        <section id="fees" aria-labelledby="fees-title" className="glass flex scroll-mt-6 flex-col gap-4 p-6">
+  const feesPanel = fees ? (
+        <section aria-labelledby="fees-title" className="panel flex flex-col gap-4 p-5 sm:p-6">
           <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h2 id="fees-title" className="font-display m-0 text-[20px] font-semibold">
+            <h2 id="fees-title" className="h-section">
               Fees
             </h2>
             <p className="m-0 text-sm font-semibold">
@@ -319,37 +282,82 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
             </div>
           </div>
         </section>
-      ) : null}
+  ) : null;
 
-      <section aria-labelledby="attendance-title" className="glass flex flex-col gap-3 p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 id="attendance-title" className="font-display m-0 text-[20px] font-semibold">
-            Attendance
-          </h2>
-          <p className="soft m-0 text-sm font-semibold">
-            {attendance.came + attendance.missed === 0
-              ? "Nothing marked in the last 30 days"
-              : `Last 30 days: came ${attendance.came}, missed ${attendance.missed}`}
+  const attendancePanel = (
+    <section aria-labelledby="attendance-title" className="panel flex flex-col gap-4 p-5 sm:p-6">
+      <SectionHeader
+        id="attendance-title"
+        title={markedTotal === 0 ? "Nothing marked in the last 30 days" : `Came to ${attendance.came} of ${markedTotal} classes in the last 30 days`}
+      />
+      {attendanceDots ?? <p className="soft m-0">No classes marked yet.</p>}
+      {marks.length > 0 ? (
+        <>
+          <p className="caption m-0 flex flex-wrap gap-x-4 gap-y-1 font-semibold" aria-hidden="true">
+            <span>
+              <i className="g-swatch" style={{ borderRadius: 999 }} />
+              Came
+            </span>
+            <span>
+              <i className="g-swatch" data-tone="attn" />
+              Missed
+            </span>
+            <span>Ring: late or excused</span>
           </p>
-        </div>
-        {attendance.recent.length === 0 ? (
-          <p className="soft m-0">No classes marked yet.</p>
-        ) : (
-          <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
-            {attendance.recent.map((m, i) => (
-              <li
-                key={`${m.on_date}-${m.batch_name}-${i}`}
-                className={m.status === "absent" ? "tag tag-attn" : m.status === "excused" ? "tag tag-quiet" : "tag tag-good"}
-                title={`${m.batch_name}${m.drop_in ? " (drop-in)" : ""}`}
-              >
-                {formatDate(m.on_date).replace(/ \d{4}$/, "")}: {ATTENDANCE_LABEL[m.status]}
-                <span className="sr-only">, {m.batch_name}</span>
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+            {attendance.recent.slice(0, 10).map((m, i) => (
+              <li key={`${m.on_date}-${m.batch_name}-${i}`} className="row flex items-center justify-between gap-3 px-3.5 py-2.5">
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{m.batch_name}</span>
+                  <span className="caption">
+                    {short(m.on_date)}
+                    {m.drop_in ? " · drop-in" : ""}
+                  </span>
+                </span>
+                <span className={m.status === "absent" ? "tag tag-attn" : m.status === "excused" ? "tag tag-quiet" : "tag tag-good"}>{ATTENDANCE_LABEL[m.status]}</span>
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </>
+      ) : null}
+    </section>
+  );
 
+  const detailsPanel = (
+    <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-2">
+        <section aria-labelledby="contacts-title" className="panel flex min-w-0 flex-col gap-3 p-5 sm:p-6">
+          <h2 id="contacts-title" className="h-section">
+            Who we message
+          </h2>
+          {student.contacts.length === 0 ? (
+            <p className="attn-text m-0 font-semibold">No contact yet. Reminders can&apos;t reach anyone.</p>
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+              {student.contacts.map((c) => (
+                <li key={c.contact_id} className="row flex flex-wrap items-center justify-between gap-2 p-3.5">
+                  <span className="min-w-0">
+                    <span className="block font-bold">
+                      {c.name} {c.is_primary ? <span className="tag tag-good ml-1">Main</span> : null}
+                    </span>
+                    <span className="muted text-[13px]">
+                      {RELATION_LABEL[c.relation]}, {formatPhone(c.phone)}
+                      {c.student_count > 1 ? `, also for ${c.student_count - 1} other student${c.student_count > 2 ? "s" : ""}` : ""}
+                    </span>
+                  </span>
+                  <RemoveContactButton studentId={student.id} contactId={c.contact_id} name={c.name} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {student.contacts.length < 4 ? <AddContactForm studentId={student.id} /> : null}
+        </section>
+      <div className="flex flex-col gap-[18px]">
+        {student.notes ? (
+          <section aria-label="Notes" className="panel p-5 sm:p-6">
+            <h2 className="h-card mb-2">Notes</h2>
+            <p className="m-0 whitespace-pre-line">{student.notes}</p>
+          </section>
+        ) : null}
       <EditStudentForm
         student={{
           id: student.id,
@@ -364,6 +372,52 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
         today={summary.today}
         branches={branches.map((b) => ({ id: b.id, name: b.name }))}
       />
+      </div>
     </div>
+  );
+
+  return (
+    <Page>
+      <PageHeader
+        back={{ href: "/students", label: "All students" }}
+        title={
+          <Travels kind="student" id={student.id}>
+            <h1 className="h-page">{student.name}</h1>
+          </Travels>
+        }
+        lead={
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {[age !== null ? `Age ${age}` : null, branch?.name, `Joined ${formatDate(student.joined_on)}`].filter(Boolean).join(" · ")}
+            <BackdatedPill date={student.joined_on} enteredOn={student.entered_on} />
+          </span>
+        }
+      >
+        <span className={statusClass}>{STATUS_LABEL[student.status]}</span>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-3">
+        {fees ? (
+          <Stat
+            label="Fees"
+            value={fees.due_paise > 0 ? formatRupees(fees.due_paise) : fees.advance_paise > 0 ? formatRupees(fees.advance_paise) : "Paid up"}
+            note={fees.overdue_paise > 0 ? `${formatRupees(fees.overdue_paise)} overdue` : fees.due_paise > 0 ? "To pay" : fees.advance_paise > 0 ? "Paid in advance" : "Nothing to pay"}
+            tone={fees.overdue_paise > 0 ? "attn" : undefined}
+          />
+        ) : null}
+        <Stat
+          label="Attendance, last 30 days"
+          value={markedTotal === 0 ? "–" : formatPercent(attendance.came / markedTotal)}
+          note={markedTotal === 0 ? "Nothing marked yet" : `Came to ${attendance.came} of ${markedTotal}`}
+          tone={attendance.missed >= 3 && attendance.missed > attendance.came ? "attn" : undefined}
+        />
+        <Stat
+          label="Classes"
+          value={current.length}
+          note={credits.available > 0 ? `${credits.available} class ${credits.available === 1 ? "credit" : "credits"} to use` : current.length === 0 ? "Not in a class yet" : "No class credits"}
+        />
+      </div>
+
+      <Tabs label={`${student.name}'s record`} tabs={tabs} panels={[classesPanel, ...(fees ? [feesPanel] : []), attendancePanel, detailsPanel]} />
+    </Page>
   );
 }

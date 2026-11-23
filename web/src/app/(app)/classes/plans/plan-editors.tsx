@@ -128,8 +128,8 @@ export function NewPlanForm() {
   }
 
   return (
-    <form onSubmit={submit} noValidate className="glass flex flex-col gap-4 p-6" aria-labelledby="new-plan-title">
-      <h2 id="new-plan-title" className="font-display m-0 text-[20px] font-semibold">
+    <form onSubmit={submit} noValidate className="panel flex flex-col gap-4 p-6" aria-labelledby="new-plan-title">
+      <h2 id="new-plan-title" className="h-section">
         Add a price
       </h2>
       <div className="segmented self-start" role="group" aria-label="Kind of price">

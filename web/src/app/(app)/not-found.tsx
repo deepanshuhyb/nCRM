@@ -10,8 +10,8 @@ import Link from "next/link";
  */
 export default function NotFound() {
   return (
-    <section className="glass mx-auto mt-10 max-w-[520px] p-7">
-      <h1 className="font-display m-0 text-[24px] font-semibold">That page doesn&apos;t exist.</h1>
+    <section className="panel mx-auto mt-10 max-w-[520px] p-7">
+      <h1 className="h-section">That page doesn&apos;t exist.</h1>
       <p className="soft mt-2 mb-5">It may have been removed, or the link is wrong.</p>
       <Link href="/" className="btn btn-primary">
         Go to home

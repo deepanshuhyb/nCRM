@@ -155,7 +155,7 @@ export function SellPackForm({ studentId, packs }: { studentId: string; packs: {
         Add a pack
       </label>
       <div className="flex flex-wrap gap-2">
-        <select id="sell-pack" className="select min-w-0 flex-1" style={{ minHeight: 48 }} value={planId} onChange={(e) => setPlanId(e.target.value)}>
+        <select id="sell-pack" className="select w-full" style={{ minHeight: 48 }} value={planId} onChange={(e) => setPlanId(e.target.value)}>
           <option value="">Choose…</option>
           {packs.map((p) => (
             <option key={p.id} value={p.id}>

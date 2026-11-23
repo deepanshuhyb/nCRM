@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
 /*
- * ncrm design tokens. Source of truth: docs/DESIGN.md.
+ * ncrm design tokens and parts. Source of truth: docs/DESIGN.md.
  * Two themes on <html data-theme="…">: daylight (default) and emerald.
+ *
+ * Three kinds of surface, and only the last one blurs:
+ *   page   the flat background
+ *   panel  solid, where content lives (.panel, .row inside it, .hero for
+ *          the one inverted block that answers the screen's question)
+ *   float  translucent with a blur, only for things that sit over moving
+ *          content (.float: the phone's bottom bar, the sign-in card)
+ * Blur is repainted on every scroll frame, so it is rationed. See the
+ * "blur diet" note in docs/NOTES.md.
  */
 
 @theme {
@@ -10,34 +19,47 @@
   --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
 }
 
+:root {
+  /* Motion: three durations, one curve. Nothing in the app is slower. */
+  --fast: 120ms;
+  --base: 200ms;
+  --slow: 320ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
 :root,
 [data-theme="daylight"] {
   color-scheme: light;
-  --bg: #fbf5f2;
+  --bg: #f8f2ee;
+  --surface: #ffffff;
+  --surface-2: #faf6f3;
+  --line: rgba(42, 23, 38, 0.1);
+  --line-strong: rgba(42, 23, 38, 0.22);
   --ink: #2a1726;
   --soft: #4a3445;
   --muted: #6b5363;
+  /* The inverted block: deep plum on the warm page. */
+  --hero-bg: #2a1726;
+  --hero-ink: #ffffff;
+  --hero-soft: rgba(255, 255, 255, 0.76);
+  --hero-line: rgba(255, 255, 255, 0.18);
+  --hero-track: rgba(255, 255, 255, 0.14);
+  --hero-good: #25ad80;
+  --hero-attn: #ee7a63;
   --n1: #ffb3a7;
   --n2: #9fe5c6;
   --n3: #ffc2d8;
   --n4: #ffcbb0;
-  --counts-opacity: 0.85;
-  --panel: rgba(255, 255, 255, 0.62);
-  --blur: blur(16px) saturate(160%);
-  --hero: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.66) 0px, rgba(255, 255, 255, 0.3) 7px, rgba(255, 255, 255, 0.66) 14px);
-  --hero-blur: blur(7px) saturate(150%);
-  --row: rgba(255, 255, 255, 0.86);
-  --row-border: rgba(42, 23, 38, 0.07);
-  --edge-light: rgba(255, 255, 255, 0.95);
-  --edge-dark: rgba(42, 23, 38, 0.1);
-  --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(42, 23, 38, 0.06), 0 14px 28px -16px rgba(42, 23, 38, 0.3);
-  --hero-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(42, 23, 38, 0.08), 0 22px 40px -20px rgba(42, 23, 38, 0.4);
-  --grain-opacity: 0.16;
-  --grain-blend: multiply;
+  --counts-opacity: 0.55;
+  --float: rgba(255, 255, 255, 0.78);
+  --float-blur: blur(14px) saturate(150%);
+  --shadow: 0 1px 2px rgba(42, 23, 38, 0.05), 0 10px 24px -18px rgba(42, 23, 38, 0.22);
+  --row: var(--surface-2);
+  --row-border: var(--line);
   --pill: #2a1726;
   --on-pill: #fff;
-  --ghost-border: rgba(42, 23, 38, 0.2);
-  --ghost-bg: rgba(255, 255, 255, 0.7);
+  --ghost-border: var(--line-strong);
+  --ghost-bg: var(--surface);
   --accent: #0e7c5b;
   --on-accent: #fff;
   --accent-text: #0e7c5b;
@@ -45,44 +67,49 @@
   --attn-text: #b4232f;
   --attn-strong: #b4232f;
   --attn-tint: rgba(229, 87, 76, 0.12);
-  --attn-panel: rgba(255, 226, 220, 0.74);
-  --attn-edge: rgba(229, 87, 76, 0.3);
+  --attn-edge: rgba(229, 87, 76, 0.34);
   --good: rgba(14, 124, 91, 0.1);
   --good-text: #0b5e45;
   --good-edge: rgba(14, 124, 91, 0.32);
-  --track: rgba(42, 23, 38, 0.08);
+  --track: rgba(42, 23, 38, 0.07);
   --fallback: #ffffff;
   --focus: #2a1726;
-  --field: rgba(255, 255, 255, 0.9);
+  --field: #ffffff;
+  /* Graphs: the same meaning everywhere. */
+  --chart: #0e7c5b;
+  --chart-soft: rgba(14, 124, 91, 0.3);
+  --chart-attn: #e5574c;
+  --chart-grid: rgba(42, 23, 38, 0.1);
 }
 
 [data-theme="emerald"] {
   color-scheme: dark;
-  --bg: #0b1a16;
+  --bg: #0a1713;
+  --surface: #10241d;
+  --surface-2: #0c1c17;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.24);
   --ink: #f1faf6;
   --soft: #d5eae2;
   --muted: #a9c4ba;
+  /* Inverted here means pale mint on the deep green page. */
+  --hero-bg: #d6f3e5;
+  --hero-ink: #0b1a16;
+  --hero-soft: rgba(11, 26, 22, 0.74);
+  --hero-line: rgba(11, 26, 22, 0.16);
+  --hero-track: rgba(11, 26, 22, 0.12);
+  --hero-good: #0e7c5b;
+  --hero-attn: #c63f3a;
   --n1: #ff9a8a;
   --n2: #2ed39a;
   --n3: #ff8fb1;
   --n4: #1fa67a;
-  --counts-opacity: 0.42;
-  --panel: rgba(12, 30, 25, 0.64);
-  --blur: blur(16px) saturate(150%);
-  --hero: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.02) 7px, rgba(255, 255, 255, 0.08) 14px), rgba(12, 30, 25, 0.5);
-  --hero-blur: blur(7px) saturate(150%);
-  --row: rgba(5, 14, 11, 0.62);
-  --row-border: rgba(255, 255, 255, 0.07);
-  --edge-light: rgba(255, 255, 255, 0.2);
-  --edge-dark: rgba(0, 0, 0, 0.35);
-  --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.35), 0 18px 34px -18px rgba(0, 0, 0, 0.7);
-  --hero-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(0, 0, 0, 0.4), 0 26px 44px -22px rgba(0, 0, 0, 0.8);
-  --grain-opacity: 0.1;
-  --grain-blend: screen;
-  --pill: rgba(241, 250, 246, 0.94);
+  --counts-opacity: 0.3;
+  --float: rgba(16, 36, 29, 0.8);
+  --float-blur: blur(14px) saturate(150%);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 28px -18px rgba(0, 0, 0, 0.6);
+  --pill: #f1faf6;
   --on-pill: #0b1a16;
-  --ghost-border: rgba(255, 255, 255, 0.28);
-  --ghost-bg: rgba(255, 255, 255, 0.06);
   --accent: #8bebc1;
   --on-accent: #0b1a16;
   --accent-text: #8bebc1;
@@ -90,15 +117,18 @@
   --attn-text: #ffb0a3;
   --attn-strong: #ffc8bf;
   --attn-tint: rgba(255, 154, 138, 0.18);
-  --attn-panel: rgba(60, 28, 28, 0.58);
-  --attn-edge: rgba(255, 154, 138, 0.38);
+  --attn-edge: rgba(255, 154, 138, 0.4);
   --good: rgba(139, 235, 193, 0.16);
   --good-text: #c6f5e0;
   --good-edge: rgba(139, 235, 193, 0.38);
-  --track: rgba(255, 255, 255, 0.1);
-  --fallback: #14302a;
+  --track: rgba(255, 255, 255, 0.09);
+  --fallback: #10241d;
   --focus: #f1faf6;
-  --field: rgba(5, 14, 11, 0.7);
+  --field: #0a1713;
+  --chart: #1fa67a;
+  --chart-soft: rgba(31, 166, 122, 0.38);
+  --chart-attn: #e46a59;
+  --chart-grid: rgba(255, 255, 255, 0.12);
 }
 
 /* ---------------------------------------------------------------- base */
@@ -114,14 +144,19 @@ body {
   min-height: 100dvh;
   font-family: var(--font-sans);
   font-size: 15px;
-  line-height: 1.45;
+  line-height: 1.5;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
 
-:where(a, button, input, select, summary):focus-visible {
+:where(a, button, input, select, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
+}
+
+/* In the base layer, so every part below can still set a link's colour. */
+@layer base {
+  a { color: inherit; text-underline-offset: 3px; }
 }
 
 .font-display {
@@ -129,14 +164,18 @@ body {
   letter-spacing: -0.03em;
 }
 
-/* ---------------------------------------------- the count behind glass */
+/* ---------------------------------------------- the count behind the page
+ * The studio's "5, 6, 7, 8". Only on sign-in and Home. Fixed, with paint
+ * containment, so it is drawn once and never repainted while scrolling. */
 
 .counts {
   position: fixed;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  z-index: 0;
+  /* Behind everything in the page, above the page colour. */
+  z-index: -1;
+  contain: strict;
   opacity: var(--counts-opacity);
   font-family: var(--font-display);
   font-weight: 700;
@@ -153,83 +192,135 @@ body {
 .counts .c7 { left: 10vw; top: 52vh; color: var(--n3); }
 .counts .c8 { right: -3vw; top: 66vh; color: var(--n4); }
 
-.page-layer {
-  position: relative;
-  z-index: 1;
-}
 
 /*
- * Surfaces, controls and lists live in Tailwind's `components` layer so a
- * utility class on the same element (px-0, py-3, m-0, min-h-…) wins. Left
- * unlayered, these rules beat every utility, because unlayered CSS always
- * outranks layered CSS, whatever the specificity. See docs/NOTES.md.
+ * Parts live in Tailwind's `components` layer so a utility class on the
+ * same element (px-0, py-3, m-0, min-h-…) wins. Left unlayered, these
+ * rules would beat every utility, because unlayered CSS always outranks
+ * layered CSS, whatever the specificity. See docs/NOTES.md.
  */
 @layer components {
-  /* ---------------------------------------------------------- surfaces */
+  /* -------------------------------------------------------------- type
+   * Steps you can see: 40 / 22 / 17 / 15 / 13. The display face is for
+   * page titles and numbers only; section titles are the text face, bold. */
 
-  .glass {
-    background: var(--panel);
-    -webkit-backdrop-filter: var(--blur);
-    backdrop-filter: var(--blur);
-    border: 1px solid var(--edge-light);
-    border-bottom-color: var(--edge-dark);
-    border-right-color: var(--edge-dark);
-    box-shadow: var(--shadow);
-    border-radius: 26px;
+  .h-page {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 30px;
+    line-height: 1.08;
+    letter-spacing: -0.035em;
+    text-wrap: balance;
+  }
+  @media (min-width: 720px) {
+    .h-page { font-size: 40px; }
+  }
+  .h-section {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: 22px;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+  }
+  .h-card {
+    margin: 0;
+    font-weight: 700;
+    font-size: 17px;
+    line-height: 1.25;
+  }
+  .lead {
+    margin: 8px 0 0;
+    max-width: 64ch;
+    color: var(--soft);
+    font-size: 16px;
+  }
+  .caption { font-size: 13px; color: var(--muted); }
+  .num {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.035em;
+    font-variant-numeric: tabular-nums;
   }
 
-  .glass-attn {
-    background: var(--attn-panel);
+  /* ---------------------------------------------------------- surfaces */
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    box-shadow: var(--shadow);
+  }
+  .panel-attn {
+    background: color-mix(in srgb, var(--attn) 7%, var(--surface));
     border-color: var(--attn-edge);
   }
 
-  .glass-good {
-    border-color: var(--good-edge);
-  }
-
-  .glass-hero {
+  /* The one inverted block per screen: the answer to "how are we doing". */
+  .hero {
     position: relative;
-    overflow: hidden;
-    background: var(--hero);
-    -webkit-backdrop-filter: var(--hero-blur);
-    backdrop-filter: var(--hero-blur);
-    border: 1px solid var(--edge-light);
-    border-bottom-color: var(--edge-dark);
-    border-right-color: var(--edge-dark);
-    box-shadow: var(--hero-shadow);
-    border-radius: 32px;
+    background: var(--hero-bg);
+    color: var(--hero-ink);
+    border-radius: 28px;
+    --chart: var(--hero-good);
+    --chart-soft: color-mix(in srgb, var(--hero-good) 38%, transparent);
+    --chart-attn: var(--hero-attn);
+    --chart-grid: var(--hero-line);
+    --track: var(--hero-track);
+    --focus: var(--hero-ink);
   }
-  .glass-hero > .grain {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    opacity: var(--grain-opacity);
-    mix-blend-mode: var(--grain-blend);
+  .hero .muted,
+  .hero .soft,
+  .hero .caption,
+  .hero .lead { color: var(--hero-soft); }
+  .hero .btn-ghost {
+    background: transparent;
+    color: var(--hero-ink);
+    border-color: var(--hero-line);
   }
-  .glass-hero > :not(.grain) {
-    position: relative;
-  }
+  .hero .btn-primary { background: var(--hero-ink); color: var(--hero-bg); }
 
-  .row {
-    background: var(--row);
-    border: 1px solid var(--row-border);
-    border-radius: 16px;
+  .float {
+    background: var(--float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    border-radius: 22px;
   }
-
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .glass, .glass-hero { background: var(--fallback); }
+    .float { background: var(--surface); }
   }
-
   @media (prefers-reduced-transparency: reduce) {
-    .glass, .glass-hero {
-      background: var(--fallback);
+    .float {
+      background: var(--surface);
       -webkit-backdrop-filter: none;
       backdrop-filter: none;
     }
-    .glass-attn { background: var(--attn-panel); }
     .counts { display: none; }
+  }
+
+  .row {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+  /* A row that goes somewhere answers the pointer. */
+  a.row {
+    transition: border-color var(--fast) var(--ease), transform var(--fast) var(--ease);
+  }
+  a.row:hover { border-color: var(--line-strong); }
+  a.row:active { transform: scale(0.995); }
+  /* Rows that appear after the page has loaded (a drop-in added, a payment
+     recorded) fade in instead of popping. */
+  [data-live] > li {
+    transition: opacity var(--base) var(--ease), transform var(--base) var(--ease);
+    @starting-style {
+      opacity: 0;
+      transform: translateY(8px);
+    }
   }
 
   /* ----------------------------------------------------------- controls */
@@ -239,39 +330,46 @@ body {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: 48px;
+    min-height: 46px;
     padding: 0 18px;
     border-radius: 12px;
     border: 1px solid transparent;
     font: 700 14px/1 var(--font-sans);
     text-decoration: none;
+    white-space: nowrap;
     cursor: pointer;
-    transition: transform 120ms ease-out, opacity 120ms ease-out;
+    transition: transform var(--fast) var(--ease), opacity var(--fast) var(--ease),
+      background-color var(--fast) var(--ease), border-color var(--fast) var(--ease);
   }
-  .btn:active { transform: translateY(1px); }
+  .btn:active { transform: scale(0.97); }
   .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
   .btn-primary { background: var(--accent); color: var(--on-accent); }
   .btn-dark { background: var(--pill); color: var(--on-pill); }
   .btn-ghost { background: var(--ghost-bg); color: var(--ink); border-color: var(--ghost-border); }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--ink); }
   .btn-quiet { background: transparent; color: var(--soft); min-height: 44px; padding: 0 12px; }
+  .btn-quiet:hover:not(:disabled) { background: var(--track); }
+  .btn-icon { width: 44px; min-height: 44px; padding: 0; }
 
   .field-label {
     display: block;
-    font-weight: 600;
-    font-size: 14px;
+    font-weight: 700;
+    font-size: 13px;
     margin-bottom: 6px;
   }
   .field {
     width: 100%;
     box-sizing: border-box;
-    min-height: 52px;
-    padding: 0 16px;
-    border-radius: 14px;
+    min-height: 50px;
+    padding: 0 14px;
+    border-radius: 12px;
     border: 1px solid var(--ghost-border);
     background: var(--field);
     color: var(--ink);
-    font: 500 17px var(--font-sans);
+    font: 500 16px var(--font-sans);
+    transition: border-color var(--fast) var(--ease);
   }
+  .field:hover { border-color: var(--muted); }
   .field::placeholder { color: var(--muted); opacity: 1; }
   .field[aria-invalid="true"] { border-color: var(--attn); }
   .field-code {
@@ -290,41 +388,46 @@ body {
   .tag {
     display: inline-flex;
     align-items: center;
-    padding: 5px 11px;
+    padding: 4px 10px;
     border-radius: 999px;
     font-size: 12px;
     font-weight: 700;
+    white-space: nowrap;
   }
   .tag-attn { background: var(--attn-tint); color: var(--attn-strong); }
   .tag-good { background: var(--good); color: var(--good-text); }
   .tag-quiet { background: var(--track); color: var(--ink); }
+  .hero .tag-quiet { color: var(--hero-ink); }
 
   .segmented {
-    display: flex;
+    display: inline-flex;
     flex-wrap: wrap;
     gap: 2px;
-    padding: 4px;
-    border-radius: 16px;
+    padding: 3px;
+    border-radius: 14px;
+    background: var(--track);
   }
   .segmented a,
   .segmented button {
     display: inline-flex;
     align-items: center;
-    min-height: 44px;
-    padding: 0 16px;
-    border-radius: 12px;
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 11px;
     border: 0;
     background: transparent;
     color: var(--soft);
-    font: 500 14px var(--font-sans);
+    font: 600 14px var(--font-sans);
     text-decoration: none;
     cursor: pointer;
+    transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease);
   }
   .segmented [aria-current="page"],
   .segmented [aria-pressed="true"] {
-    background: var(--pill);
-    color: var(--on-pill);
+    background: var(--surface);
+    color: var(--ink);
     font-weight: 700;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   }
 
   .select {
@@ -336,45 +439,433 @@ body {
     color: var(--ink);
     font: 600 14px var(--font-sans);
   }
+
+  /* ------------------------------------------------------------- shell
+   * Desktop: a sidebar beside the page. Phones: a slim top bar and a
+   * floating bottom bar (the one place blur earns its cost). */
+
+  .app {
+    display: grid;
+    grid-template-columns: 236px minmax(0, 1fr);
+    min-height: 100dvh;
+  }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 22px 14px 18px;
+    border-right: 1px solid var(--line);
+  }
+  .brand {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 24px;
+    letter-spacing: -0.04em;
+    text-decoration: none;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 12px;
+    color: var(--soft);
+    font-weight: 600;
+    font-size: 15px;
+    text-decoration: none;
+    transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease);
+  }
+  .nav-item:hover { background: var(--track); }
+  .nav-item[aria-current="page"] {
+    background: var(--pill);
+    color: var(--on-pill);
+    font-weight: 700;
+  }
+  .topbar { display: none; }
+  .main {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 30px 36px 72px;
+  }
+  .bottom-nav { display: none; }
+
+  @media (max-width: 900px) {
+    .app { display: block; }
+    .sidebar { display: none; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 16px 0;
+    }
+    .main { padding: 14px 16px calc(112px + env(safe-area-inset-bottom)); }
+    .bottom-nav {
+      display: grid;
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: calc(12px + env(safe-area-inset-bottom));
+      z-index: 20;
+      border-radius: 20px;
+      padding: 4px;
+    }
+    .bottom-nav a {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      min-height: 54px;
+      border-radius: 16px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--soft);
+      text-decoration: none;
+    }
+    .bottom-nav a[aria-current="page"] { background: var(--pill); color: var(--on-pill); }
+  }
+
+  /* ------------------------------------------------------- page pieces */
+
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px 20px;
+  }
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 36px;
+    margin: 0 0 6px -6px;
+    padding: 0 8px 0 4px;
+    border-radius: 10px;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .back-link:hover { background: var(--track); color: var(--ink); }
+  .back-link::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    margin: 0 4px 0 6px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+  .section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 16px;
+  }
+  .section-head .aside { color: var(--muted); font-size: 14px; font-weight: 600; }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    padding: 18px 20px;
+    color: inherit;
+    text-decoration: none;
+  }
+  .stat-label { font-size: 13px; font-weight: 700; color: var(--muted); }
+  .stat-value {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 30px;
+    line-height: 1;
+    letter-spacing: -0.035em;
+  }
+  .stat-note { font-size: 13px; font-weight: 600; color: var(--soft); }
+  .stat-note[data-tone="good"] { color: var(--good-text); }
+  .stat-note[data-tone="attn"] { color: var(--attn-text); }
+  a.stat {
+    transition: border-color var(--fast) var(--ease), transform var(--fast) var(--ease);
+  }
+  a.stat:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+  .hero .stat-label,
+  .hero .stat-note { color: var(--hero-soft); }
+
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 22px;
+    border: 1px dashed var(--line-strong);
+    border-radius: 16px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--line);
+    scrollbar-width: none;
+  }
+  .tabs button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 0 14px;
+    margin-bottom: -1px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--muted);
+    font: 700 15px var(--font-sans);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--fast) var(--ease), border-color var(--fast) var(--ease);
+  }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .tab-panel { animation: fade-in var(--base) var(--ease) both; }
+
+  /* Loading: the page's shape in grey, so nothing jumps when data lands. */
+  .skel {
+    display: block;
+    border-radius: 10px;
+    background: var(--track);
+    animation: skel-pulse 900ms ease-in-out infinite alternate;
+  }
+
+  /* ------------------------------------------------------------ graphs
+   * Built from plain elements on the server: no chart library, no script.
+   * Marks follow one spec: bars at most 24px wide with a 4px rounded top
+   * and a square foot on the baseline, 2px of surface between neighbours,
+   * a hairline baseline, labels in text colours (never the mark colour).
+   * Green is "fine", coral is "needs attention" and always comes with a
+   * word, because that pair is hard to tell apart for colour-blind eyes.
+   * They draw in once when the page loads: transform and opacity only. */
+  .g-bars {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    height: var(--h, 120px);
+    border-bottom: 1px solid var(--chart-grid);
+  }
+  .g-col {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: 2px;
+    outline-offset: 1px;
+  }
+  .g-col[data-gap] { margin-left: 6px; }
+  .g-col > i {
+    display: block;
+    flex: none;
+    width: 100%;
+    max-width: 24px;
+    min-height: 2px;
+    border-radius: 4px 4px 0 0;
+    background: var(--chart);
+    transform-origin: 50% 100%;
+    animation: g-grow var(--slow) var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 9ms);
+  }
+  .g-col > i + i { border-radius: 4px; }
+  .g-col > i[data-tone="soft"] { background: var(--chart-soft); }
+  .g-col > i[data-tone="attn"] { background: var(--chart-attn); }
+  .g-col > i[data-tone="neutral"] { background: var(--chart-grid); }
+  .g-col > i[data-tone="none"] { background: var(--chart-grid); height: 2px !important; border-radius: 0; }
+  .g-col:hover > i,
+  .g-col:focus-visible > i { opacity: 0.78; }
+
+  /* The hover layer, without script: the mark's own description. */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    z-index: 6;
+    padding: 5px 9px;
+    border-radius: 8px;
+    background: var(--pill);
+    color: var(--on-pill);
+    font: 600 12px/1.3 var(--font-sans);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .hero [data-tip]::after { background: var(--hero-ink); color: var(--hero-bg); }
+  [data-tip][data-edge="start"]::after { left: 0; transform: none; }
+  [data-tip][data-edge="end"]::after { left: auto; right: 0; transform: none; }
+
+  .g-axis {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .hero .g-axis { color: var(--hero-soft); }
+
+  /* Up from the line is one thing, down from it another (joined / left). */
+  .g-flow {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .g-flow-col { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+  .g-flow-up,
+  .g-flow-down { display: flex; width: 100%; justify-content: center; }
+  .g-flow-up { height: var(--h, 64px); align-items: flex-end; border-bottom: 1px solid var(--chart-grid); }
+  .g-flow-down { height: calc(var(--h, 64px) * 0.6); align-items: flex-start; }
+  .g-flow-up > i,
+  .g-flow-down > i {
+    display: block;
+    width: 100%;
+    max-width: 24px;
+    animation: g-grow var(--slow) var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 40ms);
+  }
+  .g-flow-up > i { background: var(--chart); border-radius: 4px 4px 0 0; transform-origin: 50% 100%; }
+  .g-flow-down > i { background: var(--muted); border-radius: 0 0 4px 4px; transform-origin: 50% 0; }
+
+  /* A thin meter: part of a whole. The fill never carries the only signal. */
+  .g-meter {
+    position: relative;
+    display: block;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--track);
+    overflow: hidden;
+  }
+  .g-meter > i {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--chart);
+    transform-origin: 0 50%;
+    animation: g-grow-x var(--slow) var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 40ms);
+  }
+  .g-meter > i[data-tone="attn"] { background: var(--chart-attn); }
+  .g-meter > i[data-tone="neutral"] { background: var(--muted); }
+
+  .g-dots { display: flex; flex-wrap: wrap; gap: 6px; }
+  .g-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--chart);
+    outline-offset: 2px;
+  }
+  .g-dot[data-tone="late"] { background: var(--chart-soft); box-shadow: inset 0 0 0 2px var(--chart); }
+  .g-dot[data-tone="attn"] { background: var(--chart-attn); border-radius: 4px; }
+  .g-dot[data-tone="neutral"] { background: transparent; box-shadow: inset 0 0 0 2px var(--muted); }
+
+  .g-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
+    border-radius: 3px;
+    background: var(--chart);
+    vertical-align: -1px;
+  }
+  .g-swatch[data-tone="neutral"] { background: var(--muted); }
+  .g-swatch[data-tone="attn"] { background: var(--chart-attn); }
+
+  /* Today as a strip: each class a block, as wide as it is long. */
+  .day-strip { display: flex; gap: 4px; }
+  .day-strip a {
+    position: relative;
+    flex: var(--w, 1) 1 0;
+    min-width: 44px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--hero-line);
+    color: inherit;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 700;
+    transition: transform var(--fast) var(--ease), background-color var(--fast) var(--ease);
+  }
+  .day-strip a:hover { transform: translateY(-2px); }
+  .day-strip a[data-state="done"] { background: var(--hero-good); border-color: transparent; color: var(--hero-bg); }
+  .day-strip a[data-state="due"] { border-color: var(--hero-attn); border-width: 2px; padding: 9px 11px; }
+  .day-strip a[data-state="off"] { opacity: 0.55; text-decoration: line-through; }
 }
+
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes skel-pulse { from { opacity: 1; } to { opacity: 0.55; } }
+@keyframes g-grow { from { transform: scaleY(0); } }
+@keyframes g-grow-x { from { transform: scaleX(0); } }
+
+/* ----------------------------------------------------- page transitions
+ * React's <ViewTransition> gives these class names to the browser's View
+ * Transitions API. Old content leaves fast; new content arrives a little
+ * slower and rises 8px. A name that exists on both pages (a student in the
+ * list and on their profile) travels between its two positions. */
+::view-transition-old(.leave) {
+  animation: var(--fast) var(--ease) both vt-out;
+}
+::view-transition-new(.arrive) {
+  animation: var(--base) var(--ease) var(--fast) both fade-in, var(--slow) var(--ease) both vt-rise;
+}
+::view-transition-new(.swap) {
+  animation: var(--base) var(--ease) both fade-in;
+}
+::view-transition-group(.travel) {
+  animation-duration: var(--slow);
+  animation-timing-function: var(--ease);
+}
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-rise { from { transform: translateY(8px); } }
 
 .muted { color: var(--muted); }
 .soft { color: var(--soft); }
 .attn-text { color: var(--attn-text); }
 .accent-text { color: var(--accent-text); }
 
-.bottom-nav { display: none; }
-@media (max-width: 720px) {
-  .top-nav { display: none; }
-  .bottom-nav {
-    display: grid;
-    position: fixed;
-    left: 14px;
-    right: 14px;
-    bottom: calc(14px + env(safe-area-inset-bottom));
-    z-index: 20;
-    border-radius: 20px;
-    padding: 4px;
-  }
-  .bottom-nav a {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 48px;
-    border-radius: 16px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--soft);
-    text-decoration: none;
-  }
-  .bottom-nav a[aria-current="page"] { background: var(--pill); color: var(--on-pill); }
-  .has-bottom-nav { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
   }
 }
 
@@ -406,7 +897,7 @@ body {
     border-right: 2px solid currentColor;
     border-bottom: 2px solid currentColor;
     transform: translateY(-2px) rotate(45deg);
-    transition: transform 160ms ease-out;
+    transition: transform var(--base) var(--ease);
     flex-shrink: 0;
   }
   .disclosure[open] > summary::after { transform: translateY(2px) rotate(225deg); }
@@ -417,7 +908,7 @@ body {
    * The week as columns, time running down. Each class is a block whose
    * tint fills from the bottom as places are taken; a full class turns to
    * the attention colour. Blocks are rows (a fill, no blur) inside one
-   * glass panel.
+   * panel.
    */
   .timetable {
     --hour: 72px;
@@ -472,7 +963,7 @@ body {
     color: inherit;
     text-decoration: none;
     box-sizing: border-box;
-    transition: transform 150ms ease-out;
+    transition: transform var(--fast) var(--ease), border-color var(--fast) var(--ease);
   }
   .tt-block:hover { transform: translateY(-1px); }
   .tt-block > :not(.tt-fill) { position: relative; }
@@ -602,20 +1093,23 @@ body {
   /* The save bar stays in reach on a long roster. */
   .save-bar {
     position: sticky;
-    bottom: calc(86px + env(safe-area-inset-bottom));
+    bottom: calc(84px + env(safe-area-inset-bottom));
     z-index: 10;
+    /* Solid, not glass: it floats over names and they must not show through. */
+    background: var(--surface);
+    box-shadow: var(--shadow);
   }
-  /* It floats over the roster, so it is solid: names must not show through. */
-  .glass.save-bar { background: var(--fallback); }
-  @media (min-width: 721px) {
+  @media (min-width: 901px) {
     .save-bar { bottom: 16px; }
   }
+
 }
 
 /* Printing (receipts): the page content only, black on white. */
 @media print {
   /* The shell's own header, not a <header> inside the page. */
-  .has-bottom-nav > header, .bottom-nav, .counts, .grain, .no-print { display: none !important; }
+  .sidebar, .topbar, .bottom-nav, .counts, .no-print { display: none !important; }
+  .app { display: block; }
   html, body { background: #fff !important; color: #000 !important; }
   main { padding: 0 !important; max-width: none !important; }
   .receipt { box-shadow: none; border: 1px solid #999; background: #fff; color: #000; }

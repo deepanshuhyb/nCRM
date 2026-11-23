@@ -128,8 +128,8 @@ export function ClassForm({
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-[18px]">
-      <section className="glass flex flex-col gap-4 p-6" aria-labelledby="class-basics">
-        <h2 id="class-basics" className="font-display m-0 text-[20px] font-semibold">
+      <section className="panel flex flex-col gap-4 p-6" aria-labelledby="class-basics">
+        <h2 id="class-basics" className="h-section">
           The class
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1.4fr_1fr]">
@@ -258,9 +258,9 @@ export function ClassForm({
         </div>
       </section>
 
-      <section className="glass flex flex-col gap-4 p-6" aria-labelledby="class-when">
+      <section className="panel flex flex-col gap-4 p-6" aria-labelledby="class-when">
         <div>
-          <h2 id="class-when" className="font-display m-0 text-[20px] font-semibold">
+          <h2 id="class-when" className="h-section">
             When it meets
           </h2>
           <p className="muted mt-1 mb-0 text-sm">Pick the days, then the time. Add another time if some days differ.</p>

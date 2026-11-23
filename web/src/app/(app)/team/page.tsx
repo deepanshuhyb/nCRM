@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { NotAllowed } from "@/components/not-allowed";
+import { Page } from "@/components/ui";
 import { getMe, listBranches, listStaff } from "@/lib/api-server";
 import { formatPhone } from "@/lib/format";
 import { ROLE_LABEL } from "@/lib/types";
@@ -21,10 +22,10 @@ export default async function TeamPage() {
   const branchOptions = branches.map((b) => ({ id: b.id, name: b.name }));
 
   return (
-    <div className="flex flex-col gap-[18px]">
+    <Page>
       <div>
-        <h1 className="font-display m-0 text-[32px] leading-tight font-semibold">Team</h1>
-        <p className="soft mt-2 mb-0">
+        <h1 className="h-page">Team</h1>
+        <p className="lead">
           {active.length} active. Everyone here signs in with their own number. Deactivating someone signs them out at once.
         </p>
       </div>
@@ -35,7 +36,7 @@ export default async function TeamPage() {
             const isMe = t.id === studio.staff_id;
             const locked = isMe || (t.role === "owner" && !isOwner);
             return (
-              <article key={t.id} className="glass flex flex-col gap-3 p-5">
+              <article key={t.id} className="panel flex flex-col gap-3 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="m-0 text-[17px] font-bold">
@@ -65,6 +66,6 @@ export default async function TeamPage() {
           <HireForm branches={branchOptions} canGrantOwner={isOwner} />
         </aside>
       </div>
-    </div>
+    </Page>
   );
 }

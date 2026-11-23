@@ -3,8 +3,11 @@ import Link from "next/link";
 
 import { BackdatedPill } from "@/components/backdated-pill";
 import { TakeOutButton } from "@/components/take-out-button";
-import { getBatch, getMe, getSummary, listBranches, listPlans, listRooms, listStaff } from "@/lib/api-server";
-import { WEEKDAY_LONG, formatDate, formatRupees } from "@/lib/format";
+import { Bars } from "@/components/graphs";
+import { Travels } from "@/components/travel";
+import { Page } from "@/components/ui";
+import { getBatch, getClassHistory, getMe, getSummary, listBranches, listPlans, listRooms, listStaff } from "@/lib/api-server";
+import { WEEKDAY_LONG, formatDate, formatDayShort, formatPercent, formatRupees } from "@/lib/format";
 import { STATUS_LABEL } from "@/lib/types";
 
 import { ClassForm } from "../class-form";
@@ -14,7 +17,7 @@ export const metadata: Metadata = { title: "Class" };
 
 export default async function ClassPage({ params }: PageProps<"/classes/[id]">) {
   const { id } = await params;
-  const [me, batch, summary] = await Promise.all([getMe(), getBatch(id), getSummary()]);
+  const [me, batch, summary, history] = await Promise.all([getMe(), getBatch(id), getSummary(), getClassHistory(id)]);
   const studio = me.studio!;
   const can = new Set(studio.capabilities);
   const manageStudents = can.has("manage_students");
@@ -32,18 +35,25 @@ export default async function ClassPage({ params }: PageProps<"/classes/[id]">) 
   const ratio = batch.capacity ? Math.min(1, batch.enrolled / batch.capacity) : 0;
   const mine = batch.instructor_id === studio.staff_id;
 
+  const held = history.filter((m) => m.status === "scheduled");
+  const heldCame = held.reduce((n, m) => n + m.came, 0);
+  const heldAway = held.reduce((n, m) => n + m.away, 0);
+  const historyMax = Math.max(1, ...history.map((m) => m.came + m.away));
+
   return (
-    <div className="flex flex-col gap-[18px]">
-      <Link href="/classes" className="btn btn-quiet self-start px-0">
+    <Page>
+      <Link href="/classes" className="back-link self-start">
         Timetable
       </Link>
 
       <div className="flex flex-wrap items-start gap-[18px]">
-        <section aria-labelledby="class-name" className="glass min-w-0 flex-[3_1_420px] p-6 sm:p-8">
+        <section aria-labelledby="class-name" className="panel min-w-0 flex-[3_1_420px] p-6 sm:p-8">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 id="class-name" className="font-display m-0 text-[30px] leading-tight font-semibold sm:text-[38px]">
-              {batch.name}
-            </h1>
+            <Travels kind="class" id={batch.id}>
+              <h1 id="class-name" className="h-page">
+                {batch.name}
+              </h1>
+            </Travels>
             {batch.style ? <span className="tag tag-quiet">{batch.style}</span> : null}
             {!batch.active ? <span className="tag tag-attn">Archived</span> : null}
           </div>
@@ -79,7 +89,7 @@ export default async function ClassPage({ params }: PageProps<"/classes/[id]">) 
 
           <div className="mt-6">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="font-display text-[34px] leading-none font-semibold tabular-nums">
+              <span className="num text-[34px]">
                 {batch.enrolled}
                 {batch.capacity !== null ? <span className="muted text-[20px]"> of {batch.capacity}</span> : null}
               </span>
@@ -102,10 +112,35 @@ export default async function ClassPage({ params }: PageProps<"/classes/[id]">) 
               </div>
             ) : null}
           </div>
+
+          <div className="mt-7">
+            <h2 className="h-card">
+              {held.length === 0
+                ? "No meetings marked yet"
+                : `${formatPercent(heldCame / Math.max(1, heldCame + heldAway))} came over the last ${held.length} ${held.length === 1 ? "meeting" : "meetings"}`}
+            </h2>
+            <p className="caption m-0 mt-1 mb-3">Who came (green) and who was away (grey), each meeting</p>
+            {history.length > 0 ? (
+              <Bars
+                height={96}
+                bars={history.map((m) => ({
+                  key: `${formatDayShort(m.on_date)} ${m.starts_at}`,
+                  value: m.status === "cancelled" ? null : m.came / historyMax,
+                  above: m.status === "cancelled" ? undefined : m.away / historyMax,
+                  tip: m.status === "cancelled" ? `${formatDayShort(m.on_date)}: cancelled` : `${formatDayShort(m.on_date)}: ${m.came} came, ${m.away} away`,
+                }))}
+                label={`Attendance at the last ${history.length} meetings of ${batch.name}.`}
+                from={formatDayShort(history[0].on_date)}
+                to={formatDayShort(history[history.length - 1].on_date)}
+              />
+            ) : (
+              <p className="soft m-0">Once attendance is marked, each meeting shows up here.</p>
+            )}
+          </div>
         </section>
 
-        <section aria-labelledby="roster-title" className="glass flex min-w-0 flex-[2_1_360px] flex-col gap-3 p-6">
-          <h2 id="roster-title" className="font-display m-0 text-[20px] font-semibold">
+        <section aria-labelledby="roster-title" className="panel flex min-w-0 flex-[2_1_360px] flex-col gap-3 p-6">
+          <h2 id="roster-title" className="h-section">
             Students
           </h2>
           {batch.roster === null ? (
@@ -118,7 +153,7 @@ export default async function ClassPage({ params }: PageProps<"/classes/[id]">) 
           ) : (
             <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
               {batch.roster.map((r) => (
-                <li key={r.enrollment_id} className="row flex flex-wrap items-center justify-between gap-2 p-3">
+                <li key={r.enrollment_id} className="row flex items-center justify-between gap-2 px-3.5 py-2.5">
                   <span className="min-w-0">
                     {manageStudents ? (
                       <Link href={`/students/${r.student_id}`} className="block font-bold">
@@ -157,7 +192,7 @@ export default async function ClassPage({ params }: PageProps<"/classes/[id]">) 
       </div>
 
       {manageClasses ? (
-        <details className="glass disclosure">
+        <details className="panel disclosure">
           <summary className="flex min-h-[60px] items-center px-6 font-semibold">Edit class, schedule or archive</summary>
           <div className="px-6 pb-6">
             <ClassForm
@@ -183,6 +218,6 @@ export default async function ClassPage({ params }: PageProps<"/classes/[id]">) 
           </div>
         </details>
       ) : null}
-    </div>
+    </Page>
   );
 }

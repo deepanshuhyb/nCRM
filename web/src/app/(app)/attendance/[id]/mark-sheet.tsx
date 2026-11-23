@@ -93,9 +93,9 @@ export function MarkSheet({
   }
 
   return (
-    <section aria-labelledby="roster-title" className="glass flex flex-col gap-3 p-4 sm:p-6">
+    <section aria-labelledby="roster-title" className="panel flex flex-col gap-3 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="roster-title" className="font-display m-0 text-[20px] font-semibold">
+        <h2 id="roster-title" className="h-section">
           {roster.length === 0 ? "Nobody in this class yet" : `${came} of ${roster.length} came`}
         </h2>
         {canMark && unmarked > 0 ? (
@@ -112,7 +112,7 @@ export function MarkSheet({
         ) : null}
       </div>
 
-      <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+      <ul className="m-0 flex list-none flex-col gap-1.5 p-0" data-live>
         {roster.map((r) => {
           const status = statusOf(r);
           const note = creditNote(r, status);
@@ -159,7 +159,7 @@ export function MarkSheet({
       {canMark && canFindStudents ? <AddDropIn sessionId={sessionId} onList={roster.map((r) => r.student_id)} /> : null}
 
       {canMark ? (
-        <div className="save-bar glass flex flex-wrap items-center justify-between gap-3 p-3">
+        <div className="save-bar row flex flex-wrap items-center justify-between gap-3 p-3">
           <span className="min-w-0 text-sm font-semibold" role="status" aria-live="polite">
             {error ? <span className="attn-text">{error}</span> : changed.length > 0 ? `${changed.length} to save` : (done ?? (unmarked > 0 ? `${unmarked} not marked yet` : "All marked"))}
           </span>
@@ -302,7 +302,7 @@ export function TeacherCheckIn({
   }
 
   return (
-    <div className="row flex flex-wrap items-center justify-between gap-3 p-3.5">
+    <div className="flex flex-wrap items-center justify-between gap-3 p-1.5">
       <span className="min-w-0">
         <span className="muted block text-[13px]">Teacher</span>
         {canMarkAny && team.length > 0 ? (
@@ -386,7 +386,7 @@ export function CancelClass({ sessionId, cancelled, name }: { sessionId: string;
   }
 
   return (
-    <details className="glass disclosure">
+    <details className="panel disclosure">
       <summary className="flex min-h-[56px] items-center px-6 font-semibold">This class didn&apos;t happen</summary>
       <form onSubmit={submit} noValidate className="flex flex-col gap-3 px-6 pb-6">
         <p className="soft m-0 text-sm">Cancelling clears today&apos;s marks for {name} and gives back any class credits used.</p>

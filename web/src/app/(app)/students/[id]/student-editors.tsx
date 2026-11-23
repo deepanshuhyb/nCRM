@@ -165,7 +165,7 @@ export function EditStudentForm({
   }
 
   return (
-    <details className="glass disclosure">
+    <details className="panel disclosure">
       <summary className="flex min-h-[60px] items-center px-6 font-semibold">Edit details or status</summary>
       <form onSubmit={submit} noValidate className="flex flex-col gap-4 px-6 pb-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

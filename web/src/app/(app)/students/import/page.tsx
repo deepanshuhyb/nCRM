@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { NotAllowed } from "@/components/not-allowed";
+import { Page } from "@/components/ui";
 import { getMe, getSummary, listBranches } from "@/lib/api-server";
 
 import { ImportFlow } from "./import-flow";
@@ -28,12 +29,12 @@ export default async function ImportStudentsPage() {
   const open = branches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
 
   return (
-    <div className="flex flex-col gap-[18px]">
-      <Link href="/students" className="btn btn-quiet self-start px-0">
+    <Page>
+      <Link href="/students" className="back-link self-start">
         All students
       </Link>
       <div>
-        <h1 className="font-display m-0 text-[32px] leading-tight font-semibold">Bring in your student list</h1>
+        <h1 className="h-page">Bring in your student list</h1>
         <p className="soft mt-2 mb-0 max-w-[68ch]">
           From Excel or a CSV file. You&apos;ll see what happens to every row before anything is saved, and students who are
           already here are skipped, so importing the same file twice is safe.
@@ -44,8 +45,8 @@ export default async function ImportStudentsPage() {
         <div className="min-w-0 flex-[2_1_520px]">
           <ImportFlow branches={open} today={summary.today} />
         </div>
-        <section aria-labelledby="columns-title" className="glass flex min-w-0 flex-[1_1_300px] flex-col gap-3 p-6">
-          <h2 id="columns-title" className="font-display m-0 text-[20px] font-semibold">
+        <section aria-labelledby="columns-title" className="panel flex min-w-0 flex-[1_1_300px] flex-col gap-3 p-6">
+          <h2 id="columns-title" className="h-section">
             Your sheet or ours
           </h2>
           <p className="soft m-0 text-sm">
@@ -73,6 +74,6 @@ export default async function ImportStudentsPage() {
         </section>
 
       </div>
-    </div>
+    </Page>
   );
 }

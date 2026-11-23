@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { NotAllowed } from "@/components/not-allowed";
+import { Page } from "@/components/ui";
 import { getMe, getReceipt } from "@/lib/api-server";
 import { formatDate, formatRupees } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/types";
@@ -18,7 +19,7 @@ export default async function ReceiptPage({ params }: PageProps<"/fees/receipts/
   const cancelled = payment.voided_at !== null;
 
   return (
-    <div className="mx-auto flex max-w-[560px] flex-col gap-[18px]">
+    <Page narrow>
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
         <Link href={`/students/${payment.student_id}#fees`} className="btn btn-quiet px-0">
           {payment.student_name}
@@ -99,6 +100,6 @@ export default async function ReceiptPage({ params }: PageProps<"/fees/receipts/
         </footer>
         {payment.note ? <p className="soft m-0 text-sm">Note: {payment.note}</p> : null}
       </article>
-    </div>
+    </Page>
   );
 }

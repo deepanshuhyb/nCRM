@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { Travels } from "@/components/travel";
+import { Page, PageHeader } from "@/components/ui";
 import { getMe, getSession, getSummary, listStaff } from "@/lib/api-server";
 import { formatDay } from "@/lib/format";
 
@@ -19,27 +21,28 @@ export default async function SessionPage({ params }: PageProps<"/attendance/[id
   const backHref = session.on_date === summary.today ? "/attendance" : `/attendance?date=${session.on_date}`;
 
   return (
-    <div className="mx-auto flex max-w-[860px] flex-col gap-[18px]">
-      <Link href={backHref} className="btn btn-quiet self-start px-0">
-        {session.on_date === summary.today ? "Today" : formatDay(session.on_date)}
-      </Link>
-
-      <section aria-labelledby="session-title" className="glass flex flex-col gap-4 p-6">
-        <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 id="session-title" className="font-display m-0 text-[28px] leading-tight font-semibold sm:text-[34px]">
-              {session.batch_name}
-            </h1>
-            {cancelled ? <span className="tag tag-attn">Cancelled</span> : null}
-          </div>
-          <p className="soft m-0 mt-2">
-            {formatDay(session.on_date)}, {session.starts_at}–{session.ends_at} ·{" "}
-            {[session.branch_name, session.room_name].filter(Boolean).join(" · ")} ·{" "}
+    <Page narrow>
+      <PageHeader
+        back={{ href: backHref, label: session.on_date === summary.today ? "Today" : formatDay(session.on_date) }}
+        title={
+          <Travels kind="session" id={session.id}>
+            <h1 className="h-page">{session.batch_name}</h1>
+          </Travels>
+        }
+        lead={
+          <>
+            {formatDay(session.on_date)}, {session.starts_at}–{session.ends_at} · {[session.branch_name, session.room_name].filter(Boolean).join(" · ")} ·{" "}
             <Link href={`/classes/${session.batch_id}`}>Class page</Link>
-          </p>
-          {cancelled && session.cancel_reason ? <p className="attn-text m-0 mt-2 font-semibold">Reason: {session.cancel_reason}</p> : null}
-        </div>
-        {!cancelled && session.can_mark ? (
+          </>
+        }
+      >
+        {cancelled ? <span className="tag tag-attn">Cancelled</span> : null}
+      </PageHeader>
+
+      {cancelled && session.cancel_reason ? <p className="attn-text m-0 font-semibold">Reason: {session.cancel_reason}</p> : null}
+
+      {!cancelled && session.can_mark ? (
+        <section aria-label="Teacher" className="panel p-3 sm:p-4">
           <TeacherCheckIn
             sessionId={session.id}
             instructorId={session.instructor_id}
@@ -48,18 +51,18 @@ export default async function SessionPage({ params }: PageProps<"/attendance/[id
             canMarkAny={markAny}
             team={team.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name }))}
           />
-        ) : null}
-      </section>
+        </section>
+      ) : null}
 
       {session.roster === null ? (
-        <section className="glass p-6">
+        <section className="panel p-6">
           <p className="m-0 font-semibold">
             {session.expected} {session.expected === 1 ? "student is" : "students are"} expected, {session.came} came. The
             class&apos;s teacher and the front desk mark attendance.
           </p>
         </section>
       ) : cancelled ? (
-        <section className="glass p-6">
+        <section className="panel p-6">
           <p className="m-0 font-semibold">This class didn&apos;t happen, so there&apos;s nothing to mark.</p>
         </section>
       ) : (
@@ -67,6 +70,6 @@ export default async function SessionPage({ params }: PageProps<"/attendance/[id
       )}
 
       {markAny ? <CancelClass sessionId={session.id} cancelled={cancelled} name={session.batch_name} /> : null}
-    </div>
+    </Page>
   );
 }

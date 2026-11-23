@@ -62,6 +62,7 @@ crates/
                      check-in, cancelling, alerts
     src/fees.rs      charges, payments and how they settle, receipts, dues,
                      monthly fees
+    src/reports.rs   counts and sums for the dashboard's graphs
     src/import.rs    student lists from .xlsx/.csv: safe reading, preview, commit
     src/validate.rs  shared input checks with plain messages
     src/phone.rs     phone number normalization
@@ -81,6 +82,7 @@ crates/
     src/import.rs    /students/import: raw file uploads with their own size limit
     src/attendance.rs  /sessions, /attendance/alerts, /students/{id}/attendance
     src/fees.rs      /fees/..., /payments, /charges, /students/{id}/fees
+    src/reports.rs   /reports/..., /batches/{id}/history
   ncrm-worker/  background jobs (stub)
 migrations/     SQL, applied in order, embedded into the binaries
 web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
@@ -90,6 +92,15 @@ web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
   src/app/(app)/             the signed-in app: shell, home, today
                              (attendance), branches, classes (timetable,
                              prices), students, team, more
+  src/app/(app)/loading.tsx  the skeleton shown while any page loads
+                             (detail pages have their own)
+  src/components/ui.tsx      Page, PageHeader, SectionHeader, Stat,
+                             EmptyState: what every screen is built from
+  src/components/graphs.tsx  bars, meters, ranked rows, flow, dots
+                             (server-rendered, no JS, no chart library)
+  src/components/travel.tsx  the name that moves from a list to a title
+  src/components/tabs.tsx    tabs over server-rendered panels
+  src/components/icons.tsx   the icon set, drawn in the repo
   src/components/timetable.tsx  the week grid (server-rendered, no JS)
   src/components/session-row.tsx  one class meeting as a row, with its marking state
   src/lib/nav.ts             which pages a role sees, in one place
@@ -143,7 +154,7 @@ the same pooled connection starts clean. A test proves this. Full rules:
 | `organizations` | a studio (the tenant) | Its `id` is the `org_id` everywhere else |
 | `branches` | a place the studio teaches | |
 | `staff` | a person on the team, with a role | Phone unique per studio; that phone is how they sign in |
-| `students` | someone who takes classes | Status `active`, `paused` or `left`; never deleted by the app (see below) |
+| `students` | someone who takes classes | Status `active`, `paused` or `left` (with `left_on`, the day they left); never deleted by the app (see below) |
 | `contacts` | a WhatsApp number we may message | Phone unique per studio, so siblings share one parent |
 | `student_contacts` | "this contact is the mother/father/self… of this student" | At most one `is_primary` per student; up to 4 per student |
 | `rooms` | a space inside a branch | Optional capacity; name unique per branch |
@@ -373,6 +384,11 @@ referrer policy, permissions policy, HSTS in production) are set in
 | `/attendance` ("Today") | everyone | One day's classes with how marking stands, by branch; step back a day at a time (never forward). Beside it: earlier classes still not marked, and students who missed three in a row. Instructors see alerts for their own classes |
 | `/attendance/[id]` | everyone; marking for the class's teacher and anyone who marks any class | The roster with Present / Late / Absent / Excused per student, "Everyone's here", one Save that sends only what changed; teacher check-in and substitute; add or remove a drop-in; cancel with a reason, or bring back |
 | `/more` | everyone | On phones, the pages that don't fit in the bottom bar |
+| `/` | (rebuilt) | The day's headline; attendance over four weeks; what needs you (unmarked classes, absence streaks, overdue fees); four figures; fees this month, classes by how full, joined and left. The setup checklist shows only until it's done |
+| `/attendance` | (now also) | The day as a strip of classes that fill in as they're marked |
+| `/fees` | (now also) | This month's collection per day against what fell due; what's owed by how late |
+| `/students/[id]` | (rebuilt) | Header, three figures, then tabs: Classes, Fees, Attendance, Details. `#fees` and the other fragments open a tab directly |
+| `/classes/[id]` | (now also) | Came and away at the last eight meetings |
 | `/fees` | manage fees | To collect, overdue and (owners, managers) collected this month; switch monthly fees on; who owes, most overdue first, by branch; the day's payments with totals by method |
 | `/fees/receipts/[id]` | manage fees | One receipt, laid out to print or save as PDF |
 | `/students/[id]` | (now also) | Fees: balance, charges, payments, take a payment, add a charge; cancel either (adjust fees). Selling a pack can record the payment in the same step |
@@ -387,8 +403,18 @@ refuses the data anyway. A student or member id that isn't a UUID, doesn't
 exist, or belongs to another studio gives the same 404 page
 (`(app)/not-found.tsx`, drawn inside the signed-in shell).
 
-The list of pages lives in `src/lib/nav.ts`. The phone's bottom bar has
-room for five: with more, it shows the first four and "More".
+The list of pages lives in `src/lib/nav.ts`, with an icon each. Desktop
+shows it as a sidebar; the phone's bottom bar has room for five, and with
+more it shows the first four and "More".
+
+Every page under `(app)` streams: `loading.tsx` shows a skeleton at once
+and the page replaces it when its data arrives. Two consequences. A page
+that turns out not to exist is answered with status 200 and the
+not-found screen (the status line had already been sent); nothing here
+is indexed, so that only matters for logs. And `redirect()` from a page
+happens in the browser, not as an HTTP redirect; the sign-in redirect is
+unaffected because it happens in the layout and in `proxy.ts`, before
+anything streams.
 
 Theme (Daylight or Emerald) is a plain, non-sensitive `ncrm_theme` cookie
 read on the server, so the page renders in the right theme without a
@@ -478,6 +504,10 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `POST /sessions/{id}/cancel`, `/restore` | mark any attendance | Cancel with a reason (marks cleared, credits returned); undo it |
 | `GET /attendance/alerts` | view studio | Classes in the last 7 days that are over and not fully marked; students whose last three or more marks in a class are absences. Instructors get their own classes only |
 | `GET /students/{id}/attendance` | manage students | Came and missed in the last 30 days, and the latest marks |
+| `GET /reports/attendance?days=` | view studio | Marks per day across the studio (came, away), one row for every day, 7 to 92 days |
+| `GET /reports/students` | view studio | Joined and left per month, last six months |
+| `GET /reports/fees` | manage fees | What's owed in four age buckets; `collection` (charged, collected, per day this month) is null without "view financials" |
+| `GET /batches/{id}/history` | view studio | Came and away at a class's last eight marked or cancelled meetings |
 | `GET /fees/summary` | manage fees | To collect, overdue, students owing, fee settings; `collected_this_month_paise` is null without "view financials" |
 | `PUT /fees/settings` | manage classes | `{fees_from, fee_due_day}`: start monthly fees from a month (this one or later), or `null` to stop |
 | `GET /fees/dues?branch_id=&limit=&offset=` | manage fees | Students who owe, most overdue first |
@@ -608,6 +638,11 @@ the drawer and reprint a receipt), but not the month's collection, which
 needs "view financials". Instructors see no money at all: `/summary`
 sends them `null`.
 
+Reports are counts and sums, never names, so attendance and student
+growth need only "view the studio": an instructor sees how the studio is
+doing, not who. The fees report follows the fees pages: what is owed for
+anyone who handles fees, what was collected only with "view financials".
+
 Front desk sells packs (money comes in) but can't give classes away or
 take credits back, because that's revenue the studio doesn't collect.
 Those need "manage classes", a reason, and leave an audit entry.
@@ -635,6 +670,7 @@ Those need "manage classes", a reason, and leave an audit entry.
 | A charge paid twice, or more allocated than was paid | Allocation trigger with a per-student lock | `payment_allocations_stay_in_bounds` |
 | One student's payment used for another | Allocation foreign keys include `student_id` | migration 0007 |
 | Surprise charges when fees ship | Nothing is created until `fees_from` is set; a waived monthly fee never comes back | `fees::ensure_current_month`, `charges_one_per_month` |
+| A report leaking who came or who owes | Report queries return counts and sums only; the collection series is withheld without "view financials" | `reports.rs` |
 | Payment references piling up in the audit log | Audit entries carry amounts, methods and receipt numbers, never the reference | `fees.rs` |
 | Error text showing internals | Constraint names and parser messages turned into sentences | `ncrm_core::error`, `extract.rs` |
 | A booby-trapped spreadsheet | 2 MB cap; zip entries actually unpacked under a 30 MB cap before parsing; cells streamed with row and column caps; old .xls refused; parsing on a blocking thread | `import.rs` |

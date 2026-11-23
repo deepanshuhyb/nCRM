@@ -88,6 +88,8 @@ fn check_message(constraint: &str) -> &'static str {
     match constraint {
         "credit_moves_balance" => "That's more class credits than they have.",
         "plans_shape" => "That plan's classes and validity don't fit its kind.",
+        "students_left_on_matches_status" => "A student who left needs the day they left.",
+        "students_left_after_joining" => "They can't have left before they joined.",
         "payment_allocations_bounds" => "That's more than is left to pay.",
         "payment_allocations_voided" => "That payment or charge was cancelled.",
         "fees_void_is_final" => "That was already cancelled and can't be changed.",

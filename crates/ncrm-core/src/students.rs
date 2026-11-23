@@ -321,7 +321,11 @@ pub async fn update(
     sqlx::query(
         "UPDATE students
             SET name = $2, date_of_birth = $3, branch_id = $4, status = $5, notes = $6,
-                joined_on = $7, updated_at = now()
+                joined_on = $7, updated_at = now(),
+                -- The day they left: set once when the status becomes
+                -- 'left', kept through later edits, cleared if they return.
+                left_on = CASE WHEN $5 = 'left'::student_status
+                               THEN greatest(coalesce(left_on, $8), $7) END
           WHERE id = $1",
     )
     .bind(id)
@@ -331,6 +335,7 @@ pub async fn update(
     .bind(edit.status)
     .bind(&notes)
     .bind(edit.joined_on)
+    .bind(today)
     .execute(tx.conn())
     .await?;
 

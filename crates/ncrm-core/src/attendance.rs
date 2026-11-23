@@ -892,7 +892,7 @@ pub async fn for_student(tx: &mut TenantTx, student_id: Uuid) -> Result<StudentA
            JOIN batches b ON b.org_id = s.org_id AND b.id = s.batch_id
           WHERE a.student_id = $1
           ORDER BY s.on_date DESC, s.starts_at DESC
-          LIMIT 12",
+          LIMIT 40",
     )
     .bind(student_id)
     .fetch_all(tx.conn())

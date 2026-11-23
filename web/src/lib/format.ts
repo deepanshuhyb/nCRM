@@ -94,3 +94,34 @@ export function formatDay(iso: string): string {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${WEEKDAY_LONG[weekday - 1]} ${Number(m[3])} ${months[Number(m[2]) - 1]}`;
 }
+
+/** 0.862 → "86%". */
+export function formatPercent(share: number): string {
+  return `${Math.round(share * 100)}%`;
+}
+
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** "2026-11-01" → "Nov". */
+export function monthShort(iso: string): string {
+  return MONTHS_SHORT[Number(iso.slice(5, 7)) - 1] ?? "";
+}
+
+/** "2026-11-01" → "November". */
+export function monthLong(iso: string): string {
+  return MONTHS_LONG[Number(iso.slice(5, 7)) - 1] ?? "";
+}
+
+/** "2026-11-23" → "23 Nov". */
+export function formatDayShort(iso: string): string {
+  return `${Number(iso.slice(8, 10))} ${monthShort(iso)}`;
+}
+
+/** Rupees for tight spaces: 18370000 paise → "₹1.84L"; small sums in full. */
+export function formatRupeesShort(paise: number): string {
+  const rupees = paise / 100;
+  if (rupees >= 10_000_000) return `₹${(rupees / 10_000_000).toFixed(2).replace(/\.?0+$/, "")}Cr`;
+  if (rupees >= 100_000) return `₹${(rupees / 100_000).toFixed(2).replace(/\.?0+$/, "")}L`;
+  return formatRupees(paise);
+}

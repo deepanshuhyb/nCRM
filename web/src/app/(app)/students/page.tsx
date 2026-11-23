@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { NotAllowed } from "@/components/not-allowed";
+import { TravelLink, Travels } from "@/components/travel";
+import { Page } from "@/components/ui";
 import { getMe, listStudents } from "@/lib/api-server";
 import { formatPhone } from "@/lib/format";
 import { STATUS_LABEL, type StudentStatus } from "@/lib/types";
@@ -41,11 +43,11 @@ export default async function StudentsPage({ searchParams }: PageProps<"/student
   };
 
   return (
-    <div className="flex flex-col gap-[18px]">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <Page>
+      <div className="page-head">
         <div>
-          <h1 className="font-display m-0 text-[32px] leading-tight font-semibold">Students</h1>
-          <p className="soft mt-2 mb-0">
+          <h1 className="h-page">Students</h1>
+          <p className="lead">
             {page.total === 0
               ? q
                 ? `No one matches "${q}".`
@@ -83,7 +85,7 @@ export default async function StudentsPage({ searchParams }: PageProps<"/student
             Search
           </button>
         </form>
-        <nav aria-label="Filter by status" className="segmented glass">
+        <nav aria-label="Filter by status" className="segmented">
           {FILTERS.map((f) => (
             <Link key={f.value} href={href({ status: f.value })} aria-current={f.value === status ? "page" : undefined}>
               {f.label}
@@ -93,7 +95,7 @@ export default async function StudentsPage({ searchParams }: PageProps<"/student
       </div>
 
       {page.items.length === 0 ? (
-        <section className="glass p-7">
+        <section className="panel p-7">
           <p className="m-0 text-base font-semibold">
             {q ? "Try part of the name, or 4 or more digits of a phone number." : "Add your first student, or bring in your list from Excel."}
           </p>
@@ -104,14 +106,16 @@ export default async function StudentsPage({ searchParams }: PageProps<"/student
           )}
         </section>
       ) : (
-        <section aria-label="Student list" className="glass overflow-hidden p-2">
+        <section aria-label="Student list" className="panel p-2">
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
             {page.items.map((s) => (
               <li key={s.id}>
-                <Link href={`/students/${s.id}`} className="row list-row">
+                <TravelLink kind="student" id={s.id} label={s.name} href={`/students/${s.id}`} className="row list-row">
                   <span className="min-w-[180px] flex-[2_1_220px]">
-                    <span className="list-row-title block">{s.name}</span>
-                    <span className="muted text-[13px]">{s.branch_name ?? "No branch set"}</span>
+                    <Travels kind="student" id={s.id}>
+                      <span className="list-row-title inline-block">{s.name}</span>
+                    </Travels>
+                    <span className="caption block">{s.branch_name ?? "No branch set"}</span>
                   </span>
                   <span className="min-w-[180px] flex-[2_1_220px] text-sm">
                     {s.primary_contact_name ? (
@@ -126,7 +130,7 @@ export default async function StudentsPage({ searchParams }: PageProps<"/student
                   <span className={s.status === "active" ? "tag tag-good" : s.status === "paused" ? "tag tag-quiet" : "tag tag-attn"}>
                     {STATUS_LABEL[s.status]}
                   </span>
-                </Link>
+                </TravelLink>
               </li>
             ))}
           </ul>
@@ -154,6 +158,6 @@ export default async function StudentsPage({ searchParams }: PageProps<"/student
           )}
         </nav>
       ) : null}
-    </div>
+    </Page>
   );
 }

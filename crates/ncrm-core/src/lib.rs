@@ -19,6 +19,7 @@ pub mod import;
 pub mod orgs;
 pub mod phone;
 pub mod plans;
+pub mod reports;
 pub mod rooms;
 pub mod staff;
 pub mod students;

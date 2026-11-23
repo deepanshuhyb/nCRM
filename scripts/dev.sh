@@ -5,6 +5,13 @@
 #   ./scripts/dev.sh --install 9876543210 "Your Name"   # first time on a Mac
 #   ./scripts/dev.sh 9876543210 "Your Name"             # tools already installed
 #   ./scripts/dev.sh                                     # after that
+#   ./scripts/dev.sh --fast                              # as fast as it is for real
+#
+# Without --fast the dashboard runs in development mode: every page is
+# compiled the first time you open it, which makes the first visit slow and
+# animations stutter. --fast builds the dashboard once (about a minute) and
+# runs the built app, which is how it behaves in production. Use it when
+# judging how the app feels.
 #
 # The phone number becomes the demo studio's owner; sign in with it.
 # --install uses Homebrew to add whatever is missing (Postgres 16, Node,
@@ -15,10 +22,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 install=0
-if [ "${1:-}" = "--install" ]; then
-  install=1
+fast=0
+while [ "${1:-}" = "--install" ] || [ "${1:-}" = "--fast" ]; do
+  [ "$1" = "--install" ] && install=1
+  [ "$1" = "--fast" ] && fast=1
   shift
-fi
+done
 phone="${1:-}"
 name="${2:-Studio Owner}"
 
@@ -148,8 +157,16 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
+if [ "$fast" = 1 ]; then
+  echo "Building the dashboard (about a minute)..."
+  (cd web && rm -rf .next && pnpm -s build >/dev/null)
+  web_cmd="start"
+else
+  web_cmd="dev"
+fi
+
 RUN_MIGRATIONS=1 ./target/debug/ncrm-api 2>&1 | sed -u 's/^/[api] /' &
-(cd web && PORT=3000 pnpm dev 2>&1 | sed -u 's/^/[web] /') &
+(cd web && PORT=3000 pnpm "$web_cmd" 2>&1 | sed -u 's/^/[web] /') &
 
 for _ in $(seq 1 60); do port_open 3000 && port_open 8080 && break; sleep 1; done
 cat <<BANNER

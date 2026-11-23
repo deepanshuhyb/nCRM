@@ -92,8 +92,8 @@ export function MonthlyFeesSetup({ feesFrom, dueDay, today }: { feesFrom: string
 
   if (feesFrom === null) {
     return (
-      <section aria-labelledby="monthly-title" className="glass flex flex-col gap-3 p-6">
-        <h2 id="monthly-title" className="font-display m-0 text-[20px] font-semibold">
+      <section aria-labelledby="monthly-title" className="panel flex flex-col gap-3 p-6">
+        <h2 id="monthly-title" className="h-section">
           Monthly fees aren&apos;t being created yet
         </h2>
         <p className="soft m-0 max-w-[68ch]">
@@ -111,7 +111,7 @@ export function MonthlyFeesSetup({ feesFrom, dueDay, today }: { feesFrom: string
   }
 
   return (
-    <details className="glass disclosure">
+    <details className="panel disclosure">
       <summary className="flex min-h-[56px] items-center px-6 font-semibold">
         Monthly fees are created on the 1st and due on the {ordinal(dueDay)}
         {feesFrom > thisMonth ? `, starting ${monthLabel(feesFrom)}` : ""}

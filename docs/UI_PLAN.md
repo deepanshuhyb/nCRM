@@ -5,7 +5,25 @@ headings don't read as headings, every screen looks the same. He wants it
 animated without jitter, distinctive, and built around graphs with the
 right amount of information: not sparse, not crowded.
 
-This is the plan. `docs/DESIGN.md` is rewritten as each step lands.
+This is the plan. `docs/DESIGN.md` now describes what was built.
+
+## Status (2026-11-23): built
+
+All five steps are done. Where the result differs from the plan below:
+
+- The block at the top of each screen is solid and inverted (plum, or
+  pale mint in the dark theme), not glass. Blur is left only on the
+  phone's bottom bar and the sign-in card.
+- A name travels forward (list to page) but going back is instant, with
+  no animation: the browser restores the old page outside a transition.
+- Class names don't travel from the timetable, because a class appears
+  there once per weekly slot and a travelling name must be unique.
+- Rows fade in when added; removed rows simply go. Numbers don't tick
+  over when they change.
+- Team, Branches, prices and the forms were moved onto the new parts
+  (headers, panels, type) but not redesigned beyond that.
+
+Measured scrolling before and after is in `docs/NOTES.md`.
 
 ## What is wrong today, and why
 

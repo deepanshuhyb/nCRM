@@ -95,8 +95,8 @@ export function HireForm({ branches, canGrantOwner }: { branches: BranchOption[]
   }
 
   return (
-    <form onSubmit={submit} noValidate className="glass flex flex-col gap-4 p-6" aria-labelledby="hire-title">
-      <h2 id="hire-title" className="font-display m-0 text-[20px] font-semibold">
+    <form onSubmit={submit} noValidate className="panel flex flex-col gap-4 p-6" aria-labelledby="hire-title">
+      <h2 id="hire-title" className="h-section">
         Add someone
       </h2>
       <div>

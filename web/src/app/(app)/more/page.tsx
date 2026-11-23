@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { Page } from "@/components/ui";
 import { getMe } from "@/lib/api-server";
 import { BOTTOM_NAV_SLOTS, navFor } from "@/lib/nav";
 
@@ -11,9 +12,9 @@ export default async function MorePage() {
   const me = await getMe();
   const rest = navFor(me.studio!.capabilities).slice(BOTTOM_NAV_SLOTS);
   return (
-    <div className="mx-auto flex max-w-[560px] flex-col gap-[18px]">
-      <h1 className="font-display m-0 text-[32px] leading-tight font-semibold">More</h1>
-      <ul className="glass m-0 flex list-none flex-col gap-1.5 p-2">
+    <Page narrow>
+      <h1 className="h-page">More</h1>
+      <ul className="panel m-0 flex list-none flex-col gap-1.5 p-2">
         {rest.map((item) => (
           <li key={item.href}>
             <Link href={item.href} className="row list-row min-h-[56px]">
@@ -22,6 +23,6 @@ export default async function MorePage() {
           </li>
         ))}
       </ul>
-    </div>
+    </Page>
   );
 }

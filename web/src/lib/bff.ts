@@ -19,6 +19,7 @@ export const ALLOWED_PREFIXES = [
   "fees",
   "payments",
   "plans",
+  "reports",
   "rooms",
   "sessions",
   "staff",

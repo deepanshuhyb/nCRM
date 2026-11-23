@@ -13,8 +13,8 @@ export default async function ChooseStudioPage({ searchParams }: PageProps<"/cho
   const next = safeNextPath(typeof params.next === "string" ? params.next : null);
 
   return (
-    <section className="glass p-6 sm:p-8" aria-labelledby="choose-title">
-      <h1 id="choose-title" className="font-display m-0 text-[30px] leading-[1.08] font-semibold">
+    <section className="panel p-6 sm:p-8" aria-labelledby="choose-title">
+      <h1 id="choose-title" className="h-page">
         Which studio?
       </h1>
       <p className="soft mt-3 mb-6">You work at more than one. You can switch any time from the top bar.</p>

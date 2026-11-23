@@ -72,6 +72,13 @@ describe("apiTarget", () => {
     expect(apiTarget(API, ["payouts"], "")).toBeNull();
   });
 
+  it("reaches reports", () => {
+    const id = "0b8f3e1c-1f2a-4c3d-9e8f-123456789abc";
+    expect(apiTarget(API, ["reports", "attendance"], "?days=28")?.toString()).toBe(`${API}/reports/attendance?days=28`);
+    expect(apiTarget(API, ["batches", id, "history"], "")?.pathname).toBe(`/batches/${id}/history`);
+    expect(apiTarget(API, ["report"], "")).toBeNull();
+  });
+
   it.each([
     [[]],
     [["healthz"]],

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Timetable } from "@/components/timetable";
+import { Page } from "@/components/ui";
 import { getMe, getSummary, listBatches, listBranches } from "@/lib/api-server";
 import { isoWeekday, scheduleSummary } from "@/lib/format";
 
@@ -35,11 +36,11 @@ export default async function ClassesPage({ searchParams }: PageProps<"/classes"
   };
 
   return (
-    <div className="flex flex-col gap-[18px]">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <Page>
+      <div className="page-head">
         <div>
-          <h1 className="font-display m-0 text-[32px] leading-tight font-semibold">Classes</h1>
-          <p className="soft mt-2 mb-0">
+          <h1 className="h-page">Classes</h1>
+          <p className="lead">
             {running.length === 0
               ? "No classes yet."
               : `${running.length} ${running.length === 1 ? "class" : "classes"}, ${places} ${places === 1 ? "student" : "students"} in them${
@@ -62,7 +63,7 @@ export default async function ClassesPage({ searchParams }: PageProps<"/classes"
       </div>
 
       {branches.length > 1 ? (
-        <nav aria-label="Branch" className="segmented glass self-start">
+        <nav aria-label="Branch" className="segmented self-start">
           <Link href={href({ branch: null })} aria-current={!branch ? "page" : undefined}>
             All branches
           </Link>
@@ -77,7 +78,7 @@ export default async function ClassesPage({ searchParams }: PageProps<"/classes"
       ) : null}
 
       {scheduled.length === 0 ? (
-        <section className="glass p-7">
+        <section className="panel p-7">
           <p className="m-0 text-base font-semibold">
             {can.has("manage_classes")
               ? "Add your first class: its days, times, room and teacher."
@@ -90,7 +91,7 @@ export default async function ClassesPage({ searchParams }: PageProps<"/classes"
           ) : null}
         </section>
       ) : (
-        <section aria-label="This week's timetable" className="glass p-3 sm:p-4">
+        <section aria-label="This week's timetable" className="panel p-3 sm:p-4">
           <Timetable
             batches={scheduled}
             todayWeekday={isoWeekday(summary.today)}
@@ -108,7 +109,7 @@ export default async function ClassesPage({ searchParams }: PageProps<"/classes"
           archived.length === 0 ? (
             <p className="muted m-0">No archived classes.</p>
           ) : (
-            <ul className="glass m-0 mt-2 flex list-none flex-col gap-1.5 p-2">
+            <ul className="panel m-0 mt-2 flex list-none flex-col gap-1.5 p-2">
               {archived.map((b) => (
                 <li key={b.id}>
                   <Link href={`/classes/${b.id}`} className="row list-row">
@@ -122,6 +123,6 @@ export default async function ClassesPage({ searchParams }: PageProps<"/classes"
           )
         ) : null}
       </div>
-    </div>
+    </Page>
   );
 }

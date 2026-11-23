@@ -415,3 +415,16 @@ export type PaymentsList = {
   by_method: { method: PaymentMethod; amount_paise: number; payments: number }[];
   collected_paise: number;
 };
+
+// --------------------------------------------------------------- reports
+
+export type DayAttendance = { date: string; came: number; away: number };
+export type MonthStudents = { month: string; joined: number; left: number };
+export type AgeBucket = { key: "not_due" | "week" | "month" | "older"; due_paise: number; students: number };
+export type FeesReport = {
+  month: string;
+  ageing: AgeBucket[];
+  /** Null for roles that can't see financial reports. */
+  collection: { charged_paise: number; collected_paise: number; days: { date: string; collected_paise: number }[] } | null;
+};
+export type MeetingCount = { on_date: string; starts_at: string; status: "scheduled" | "cancelled"; came: number; away: number };

@@ -1,6 +1,7 @@
+import type { IconName } from "@/components/icons";
 import type { Capability } from "@/lib/types";
 
-export type NavItem = { href: string; label: string };
+export type NavItem = { href: string; label: string; icon: IconName };
 
 /** How many items the phone's bottom bar shows before "More". */
 export const BOTTOM_NAV_SLOTS = 4;
@@ -11,13 +12,14 @@ export const BOTTOM_NAV_SLOTS = 4;
  */
 export function navFor(capabilities: Capability[]): NavItem[] {
   const can = new Set(capabilities);
-  return [
-    { href: "/", label: "Home" },
-    { href: "/attendance", label: "Today" },
-    ...(can.has("manage_students") ? [{ href: "/students", label: "Students" }] : []),
-    ...(can.has("manage_fees") ? [{ href: "/fees", label: "Fees" }] : []),
-    { href: "/classes", label: "Classes" },
-    ...(can.has("manage_staff") ? [{ href: "/team", label: "Team" }] : []),
-    { href: "/branches", label: "Branches" },
+  const items: (NavItem | false)[] = [
+    { href: "/", label: "Home", icon: "home" },
+    { href: "/attendance", label: "Today", icon: "today" },
+    can.has("manage_students") && { href: "/students", label: "Students", icon: "students" },
+    can.has("manage_fees") && { href: "/fees", label: "Fees", icon: "fees" },
+    { href: "/classes", label: "Classes", icon: "classes" },
+    can.has("manage_staff") && { href: "/team", label: "Team", icon: "team" },
+    { href: "/branches", label: "Branches", icon: "branches" },
   ];
+  return items.filter((i): i is NavItem => i !== false);
 }

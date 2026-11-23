@@ -78,8 +78,11 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 
 ## 5. Analytics
 
-- [ ] Daily rollup tables
-- [ ] Owner home dashboard
+- [x] Report endpoints: attendance by day, joined and left by month, dues by age, collection by day, a class's last meetings
+- [x] Owner home dashboard with graphs; graphs on Today, Fees, class and student pages
+- [x] Dashboard overhaul (docs/UI_PLAN.md): solid surfaces, type scale, sidebar, loading skeletons, page transitions
+- [ ] Daily rollup tables (not needed until a studio is large; reports read live tables)
+- [ ] A Reports page with date ranges and export
 - [ ] Morning summary on WhatsApp
 
 ## 6. Pilot

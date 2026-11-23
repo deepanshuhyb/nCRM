@@ -51,8 +51,8 @@ export function NewStudentForm({ branches, today }: { branches: { id: string; na
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-[18px]">
-      <section className="glass flex flex-col gap-4 p-6" aria-labelledby="student-section">
-        <h2 id="student-section" className="font-display m-0 text-[20px] font-semibold">
+      <section className="panel flex flex-col gap-4 p-6" aria-labelledby="student-section">
+        <h2 id="student-section" className="h-section">
           Student
         </h2>
         <div>
@@ -113,9 +113,9 @@ export function NewStudentForm({ branches, today }: { branches: { id: string; na
         </div>
       </section>
 
-      <section className="glass flex flex-col gap-4 p-6" aria-labelledby="contacts-section">
+      <section className="panel flex flex-col gap-4 p-6" aria-labelledby="contacts-section">
         <div>
-          <h2 id="contacts-section" className="font-display m-0 text-[20px] font-semibold">
+          <h2 id="contacts-section" className="h-section">
             Who we message
           </h2>
           <p className="muted mt-1 mb-0 text-sm">The first one is the main contact for reminders and fees.</p>

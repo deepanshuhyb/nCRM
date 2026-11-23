@@ -1,98 +1,160 @@
 # ncrm design language
 
-The dashboard borrows from the dance studio itself: the teacher's count
-("5, 6, 7, 8") behind everything, and reeded glass like a studio door.
-Calm enough to use all day, with one bold thing per screen.
+A calm page with one live thing on it. Every screen answers one question
+at the top (how is attendance, what is left today, how much has come in),
+in one inverted block that nothing else on the page competes with.
+Everything below it is quiet: solid panels, a real type scale, the same
+two meaning colours. Movement only answers something the person did.
 
-Mockup: the "Studio CRM — owner home dashboard" design canvas (desktop,
-phone, and light and dark side by side).
+The studio is still in it: the teacher's count ("5, 6, 7, 8") sits behind
+sign-in and Home, and the display face is used the way a studio uses a
+poster, for titles and numbers only.
+
+This replaces the first design (glass panels over the count everywhere).
+`docs/UI_PLAN.md` records why: every panel blurred the page behind it, so
+scrolling stuttered, and with one surface for everything nothing stood
+out. `docs/NOTES.md` has the measurements.
 
 ## Themes
 
-**Daylight** is the light theme and the default. **Emerald** is the dark
-theme. No blue, and no yellow or lime, in either.
+Two themes on `<html data-theme>`, chosen with the sun/moon button and
+remembered in the `ncrm_theme` cookie (read on the server, so there is no
+flash). All colours are CSS variables at the top of `globals.css`.
 
-| Role | Daylight | Emerald |
+| | Daylight | Emerald |
 |---|---|---|
-| Background | `#FBF5F2` blush white | `#0B1A16` deep green |
-| Text | `#2A1726` | `#F1FAF6` |
-| Secondary text | `#6B5363` | `#A9C4BA` |
-| Good / primary action | `#0E7C5B` emerald, white text | `#8BEBC1` mint, dark text |
-| Needs attention | `#E5574C` coral (text `#B4232F`) | `#FF9A8A` coral (text `#FFB0A3`) |
-| Count numerals behind the glass | coral `#FFB3A7`, mint `#9FE5C6`, pink `#FFC2D8`, peach `#FFCBB0` at 85% | coral `#FF9A8A`, green `#2ED39A`, pink `#FF8FB1`, `#1FA67A` at 42% |
-| Solid fallback for glass | `#FFFFFF` | `#14302A` |
+| Page | warm off-white `#f8f2ee` | deep green `#0a1713` |
+| Panel | white | `#10241d` |
+| Ink | plum `#2a1726` | `#f1faf6` |
+| The inverted block | plum, white text | pale mint `#d6f3e5`, dark text |
+| Fine / act here | emerald `#0e7c5b` | mint `#8bebc1` |
+| Needs attention | coral `#e5574c` | `#ff9a8a` |
 
-Colour always carries meaning: the action colour means fine or act here,
-coral means needs attention. Nothing else is coloured.
-
-Attendance scale (heatmaps) runs light to dark in Daylight and dark to
-bright in Emerald, so it reads without hue. Cells under 65% also get a 2px
-ring so they stand out for colour-blind users.
+Two colours carry meaning and nothing else does: green is "fine, or act
+here", coral is "needs attention". Coral always comes with a word ("Full",
+"Overdue", "3 not marked") because green and coral are hard to tell apart
+for colour-blind readers; the palette check in `docs/NOTES.md` shows the
+numbers.
 
 ## Type
 
-- **Unbounded** (600) for headlines, big numbers and the background count.
-- **Figtree** (400–700) for everything else.
-- Numbers use `font-variant-numeric: tabular-nums`.
-- Rupees in Indian grouping: `Intl.NumberFormat('en-IN')` (₹1,24,500).
-  Short form uses lakh: ₹1.24L.
-- Sentence case everywhere. No all-caps labels.
+Two families, self-hosted. Unbounded (wide, heavy) for page titles and
+big numbers; Figtree for everything else. The steps are far enough apart
+to see without thinking:
 
-## Behind the glass
+| Class | Size | Use |
+|---|---|---|
+| `.h-page` | 40px (30 on phones), Unbounded | The page's title. One per page |
+| `.num` | 30 to 72px, Unbounded, tabular figures | The number a block is about |
+| `.h-section` | 22px, Figtree 800 | A section inside a page |
+| `.h-card` | 17px, Figtree 700 | A panel's title, a row's name |
+| body | 15px | |
+| `.caption` | 13px, muted | Supporting detail |
 
-Not colour blobs. The page background carries the count, "5 6 7 8", in
-Unbounded at 700–780px (380–420px on a phone), one numeral per region,
-each in a theme colour. Glass panels sit over them, so the numerals show
-as soft shapes through the glass and as crisp edges in the gaps.
+Section titles are deliberately not in the display face: at 20px it read
+as a label, not a heading, which is what "headlines don't look like
+headers" was about. A graph's title is a sentence that states the finding
+("2 classes are full"), with what is plotted in a caption under it.
 
-## Glass
+## Surfaces
 
-| Surface | Fill | Blur | Radius |
-|---|---|---|---|
-| Hero (one per screen) | Reeded: vertical ribs, `repeating-linear-gradient(90deg, …)` 12–14px period, plus fine grain | 7px | 26–32px |
-| Panel / tile | Flat translucent fill, no gradient (Daylight white 62%, Emerald `rgba(12,30,25,.64)`) | 16px | 24–28px |
-| Row inside a panel | Near-solid (Daylight white 86%, Emerald `rgba(5,14,11,.62)`) | none | 12–18px |
+Three kinds, and only the last one blurs.
 
-What makes it read as real glass rather than a template:
-- **Edge light:** 1px border, bright on top and left, darker on bottom and
-  right, as if light hits the glass edge from the top-left.
-- **Contact shadows:** a 1–2px shadow plus a tight negative-spread drop
-  (`0 14px 28px -16px`), not a large soft glow.
-- **Grain on the hero only:** an inline SVG `feTurbulence` overlay at low
-  opacity (multiply in Daylight, screen in Emerald).
-- **Less blur than usual** (7–16px), so what is behind keeps its shape.
-- Do not nest blurred surfaces. Rows inside a panel use a fill, not blur.
-- Under `prefers-reduced-transparency: reduce`, glass becomes the theme's
-  solid fallback with no blur.
+- **Page**: the flat background.
+- **Panel** (`.panel`): solid, hairline border, soft shadow, 22px radius.
+  Rows inside a panel (`.row`) are a slightly tinted fill with a 14px
+  radius: radius shrinks with depth. `.panel-attn` tints a panel coral
+  when its content needs attention.
+- **The inverted block** (`.hero`): the theme turned inside out (plum on
+  the warm page, pale mint on the dark one). One per screen, at the top,
+  holding the screen's answer: a big number, a sentence, a graph.
+- **Float** (`.float`): translucent with a 14px blur. Only for things that
+  sit over moving content: the phone's bottom bar and the sign-in card.
+  Under `prefers-reduced-transparency`, or where blur is unsupported, it
+  becomes solid.
 
-## Shapes
-
-- Buttons and navigation items are rounded rectangles (10–14px), not pills.
-- Small status tags stay fully round.
-- Radius shrinks with depth: hero 32, panels 24–28, rows 12–18, chips 3–6.
+The count behind the page (`<Counts />`) appears on sign-in and Home only.
+It is a fixed layer with paint containment, so it is drawn once.
 
 ## Layout
 
-- Bento grid where block size means importance. The hero block holds
-  what needs action today.
-- Every chart title is the finding in plain words ("Hip-hop Beginners is
-  sliding."), with the chart's description underneath.
-- Every insight has the action next to it (Send reminders, Message).
-- Touch targets at least 44px. Mobile-first: every screen works at 390px.
-- Phone navigation is a glass bar at the bottom. It shows only the pages
-  the person's role can open, so its column count follows the items.
-- Records (students, team) are a list of rows inside one glass panel, not a
-  card per record. A row links to the full profile.
-- Rarely used edits sit behind a disclosure ("Edit details or status")
-  with a chevron, so the profile reads as a profile, not a form.
-- Something missing that will cause trouble later (a student with no
-  contact) is called out in the attention colour on the row itself.
+- Desktop (901px and up): a sidebar with icon and label per page, the
+  studio's name, studio switcher, sign out and theme. The page is at most
+  1240px wide.
+- Phones: a slim top bar, and a floating bottom bar with four pages and
+  "More". Every screen works at 390px.
+- A page is `<Page>` (from `components/ui.tsx`) with a `PageHeader`
+  (where you came from, title, one line, actions), then the inverted
+  block, then figures (`Stat`), then lists. The most important thing is
+  top-left.
+- Detail pages with a lot to them use tabs (`components/tabs.tsx`): the
+  student profile is Classes, Fees, Attendance, Details. All panels are
+  rendered on the server; switching is instant and the address's
+  `#fragment` remembers the tab.
+- Icons are drawn in `components/icons.tsx` on one 24px grid: no icon
+  package, no third-party origin.
+
+## Motion
+
+A system, not effects. Three durations and one curve, as CSS variables:
+`--fast` 120ms (press, hover), `--base` 200ms (open, swap), `--slow`
+320ms (page change, graphs drawing in), `--ease`
+`cubic-bezier(0.2, 0, 0, 1)`. Nothing is slower than 320ms. Only
+`transform` and `opacity` are animated, so nothing causes layout.
+
+- **Opening a page**: the route's `loading.tsx` skeleton appears at once
+  (the page's shape in grey), then the content fades in and rises 8px.
+  Old content leaves in 120ms. This is React's `<ViewTransition>` driving
+  the browser's View Transitions API; no animation library.
+- **A name that travels**: tap a student in a list and their name moves
+  to the profile's title position immediately, before the server has
+  answered. `components/travel.tsx` explains how.
+- **Graphs** draw in once per page load: bars grow from the baseline.
+  That is the one thing on a screen that moves by itself.
+- **Rows that appear later** (a drop-in, a payment) fade in; lists opt in
+  with `data-live`.
+- **Tabs and disclosures** fade their content in.
+- `prefers-reduced-motion: reduce` turns all of it off.
+
+Judge motion on the built app (`./scripts/dev.sh --fast`), not in
+development mode, where each page is compiled on first visit.
+
+## Graphs
+
+Built from plain elements on the server (`components/graphs.tsx`), like
+the timetable: no chart library, no script, and they print.
+
+- Each graph answers one question someone already asks, and its title is
+  the answer. A figure appears only if someone acts on it.
+- Marks: bars at most 24px wide with a 4px rounded top and a square foot
+  on the baseline, 2px between neighbours, a hairline baseline, no grid.
+  Labels are text-coloured, never the mark's colour.
+- Hover, tap or focus on a mark shows what it stands for (`data-tip`, in
+  CSS). Each graph also carries a spoken summary and a screen-reader
+  table of its numbers.
+- Colour is the same everywhere: green fine, coral needs attention (with
+  a word), grey neutral. Earlier periods are a lighter step of the same
+  green, never a second hue.
+- Where two things are compared over time (joined and left), one goes up
+  from the line and the other down, so position tells them apart, not
+  colour.
+
+| Screen | Graph | Question |
+|---|---|---|
+| Home | Share who came, each day for four weeks | Are people coming? |
+| Home, Fees | Money received each day this month, against what fell due | Is the money coming in? |
+| Home | Classes by places taken | Which classes need attention? |
+| Home | Joined and left per month | Are we growing? |
+| Today | The day as a strip of classes, filled once marked | What's left today? |
+| Fees | What's owed by how late it is | How old is the debt? |
+| Class page | Came and away at the last eight meetings | Is this class slipping? |
+| Student page | A mark per class attended or missed | Is this student slipping? |
 
 ## The timetable
 
 The classes page's one bold element. The week runs across, time runs
-down, one hour is 72px. Each class is a row-tinted block (no blur: it sits
-inside one glass panel) whose fill rises from the bottom as places are
+down, one hour is 72px. Each class is a row-tinted block inside one panel
+whose fill rises from the bottom as places are
 taken, in the "fine" tint; a full class takes the attention tint and
 border. The fill has no top edge: a line there reads as a strikethrough
 under the name. Classes at the same time sit side by side in lanes. An
@@ -112,14 +174,14 @@ student gets four buttons side by side (Present, Late, Absent, Excused),
 each at least 44px tall, and the chosen one fills in: the "fine" colour
 for Present and Late, the attention colour for Absent, a neutral dark for
 Excused. Colour is never the only signal: the chosen button also carries
-`aria-pressed` and the row count in the heading changes ("14 of 15 came").
+`aria-pressed` and the count in the heading changes ("14 of 15 came").
 
 "Everyone's here" marks whoever is still blank as present, because in most
 classes most people come; staff then tap the two or three exceptions.
 Nothing is sent until Save. The save bar sticks above the bottom
 navigation and says what Save will do ("3 to save", "2 not marked yet",
-"Saved."). It is solid, not glass: it floats over names and they must not
-show through.
+"Saved."). It is solid: it floats over names and they must not show
+through.
 
 Notes under a name are short and only appear when they matter: "Pays per
 class, 3 credits left", "No credits left: this class will be owed" (in
@@ -155,7 +217,7 @@ as a past date is picked, so staff see what they're doing.
 
 ## Styles and Tailwind
 
-Our classes (`.glass`, `.row`, `.btn`, `.field`, `.tag`, …) live in
+Our classes (`.panel`, `.row`, `.btn`, `.field`, `.tag`, …) live in
 `@layer components` in `globals.css`, so a Tailwind utility on the same
 element (`px-0`, `py-3`, `m-0`) wins. Put new component classes there too.
 See the cascade-layer note in `docs/NOTES.md`.

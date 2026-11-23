@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
-import { Grain } from "@/components/grain";
 import { ApiError, apiSend } from "@/lib/api-client";
 import type { Me } from "@/lib/types";
 
@@ -73,10 +72,9 @@ export function SignInForm({ next }: { next: string }) {
   }
 
   return (
-    <section className="glass-hero p-6 sm:p-8" aria-labelledby="sign-in-title">
-      <Grain />
+    <section className="float p-6 sm:p-8" aria-labelledby="sign-in-title">
       <div>
-        <h1 id="sign-in-title" className="font-display m-0 text-[34px] leading-[1.05] font-semibold">
+        <h1 id="sign-in-title" className="h-page">
           {step === "phone" ? "Sign in to your studio." : "Check WhatsApp."}
         </h1>
         <p className="soft mt-3 mb-6 text-base">

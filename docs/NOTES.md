@@ -16,6 +16,138 @@ Template:
 
 ---
 
+## 2026-11-23: The blur diet (why scrolling stuttered)
+
+**Context:** the owner said movement looked choppy.
+
+**What wasn't obvious:** the first design put every piece of content on a
+glass panel (`backdrop-filter: blur`). A blurred panel has to re-blur
+whatever is behind it each time that changes, and when you scroll,
+everything behind every panel changes on every frame. Four to eight
+blurred panels per screen meant four to eight blurs per frame.
+
+**What we did:** measured, then rationed. Solid panels for content; blur
+only on things that float over moving content (the phone's bottom bar,
+the sign-in card). Frame times while scrolling the built app, in a
+headless browser that renders in software (so worse than a real laptop,
+but the same machine before and after):
+
+| Page (1400px wide) | Blurred elements | Average frame | Frames over 25ms |
+|---|---|---|---|
+| Fees, before | 8 | 32.3ms | 80 of 116 |
+| Fees, after | 1 | 16.7ms | 0 of 62 |
+| Students, before | 4 | 49.2ms | 90 of 110 |
+| Students, after | 1 | 16.7ms | 0 of 106 |
+
+16.7ms is one frame at 60 a second: every frame arrives on time.
+
+**Consequences:** before adding `.float` to anything, ask whether content
+scrolls under it. The script is `/tmp/e2e/perf.py` in this session's
+workspace; the method (scroll 24px per frame, record the gaps between
+`requestAnimationFrame` callbacks) is easy to repeat in DevTools.
+
+## 2026-11-23: Page transitions, and a name that travels
+
+**Context:** pages froze and then popped in whole. We wanted a tap to
+answer at once and the new page to arrive, not replace.
+
+**What wasn't obvious:**
+- Every page waits for the API on the server. Without a `loading.tsx`,
+  Next.js keeps showing the old page until the new one is completely
+  ready, so a tap appears to do nothing.
+- React 19.3 ships `<ViewTransition>`, which hands class names to the
+  browser's View Transitions API; no animation library is needed. It
+  only animates changes that happen inside a React *transition*
+  (navigation is one) or a Suspense reveal.
+- Two elements animate *into each other* only if both pages carry the
+  same `name` in the same render. With a skeleton in between, the list
+  and the real page never meet. And `loading.tsx` receives no params, so
+  the skeleton doesn't know whose page it is.
+- A name must be unique on a page. A class appears once per weekly slot
+  on the timetable, so its blocks can't carry a travelling name.
+- Going back with the browser's button restores the old page instantly,
+  outside a transition, so nothing animates. That's fine: back should be
+  instant.
+
+**What we did:** `components/ui.tsx` has `Page` (content: fades in and
+rises) and `LoadingPage` (skeleton), and every route under `(app)` has a
+`loading.tsx`. For the travelling name (`components/travel.tsx`): the
+link remembers the label it showed in a module variable when tapped; the
+skeleton is a client component, reads the id with `useParams()` and the
+label from that variable, and renders the real name in the title slot
+under the same transition name as the list row. The name moves; the rest
+fades in when the server answers. On a direct load nothing is remembered
+and the title is a grey bar.
+
+**Consequences:** verified on the built app: tapping a student shows
+their name as the page title while the skeleton is still up. In
+development mode Next.js compiles each route on first visit, so the
+skeleton shows late there; judge motion with `./scripts/dev.sh --fast`.
+The CSP needed no change: React sets `view-transition-name` as an inline
+style, which `style-src-attr` already allows.
+
+## 2026-11-23: Graphs without a chart library, and a colour check
+
+**Context:** the dashboard needed graphs that stay minimal.
+
+**What wasn't obvious:** a chart library would add script to every page
+for what are, here, a few dozen rectangles. And "does this palette work
+for colour-blind readers" is computable, not a matter of taste.
+
+**What we did:** graphs are plain elements rendered on the server
+(`components/graphs.tsx`), sized with percentages, animated with CSS, with
+a CSS-only hover/tap label and a screen-reader table of the numbers. We
+ran a palette validator (lightness band, contrast against the surface,
+separation under simulated colour blindness). It passed our single
+series colour on each surface after we darkened the dark theme's mark
+green (`#8bebc1` was too light for a mark; marks use `#1fa67a`). It
+*failed* green against coral as a pair: for red-blind readers the two are
+nearly the same (ΔE 2.2 where 8 is the target), and no coral near ours
+fixes that.
+
+**Consequences:** green/coral is treated as a status pair, never as two
+series: coral always appears with a word ("Full", "Overdue"). Where two
+series share a graph (joined and left) they differ by position (up and
+down from the line) and the second is neutral grey.
+
+## 2026-11-23: A link's colour beat every component
+
+**Context:** after the restyle, the active sidebar item and the green
+buttons showed dark text on a dark fill.
+
+**What wasn't obvious:** the base rule `a { color: inherit }` was written
+outside any cascade layer. Unlayered CSS beats layered CSS regardless of
+specificity (the same trap as the Tailwind note below), so it overrode
+`.btn-primary` and `.nav-item` wherever those were links.
+
+**What we did:** moved it into `@layer base`.
+
+**Consequences:** nothing in `globals.css` is unlayered except tokens,
+keyframes and the view-transition rules. New element rules go in
+`@layer base`.
+
+## 2026-11-23: When someone left, and reports that create nothing
+
+**Context:** the "joined and left per month" graph.
+
+**What wasn't obvious:** "left" was only a status. `updated_at` moves on
+every edit, so there was no way to say who left in October.
+
+**What we did:** migration 0008 adds `students.left_on`, set when the
+status becomes `left`, kept through later edits, cleared if they return,
+with a CHECK tying it to the status. Existing leavers were backfilled
+from their last edit. The report endpoints return counts and sums only
+(no names), zero-filled so a day with no classes is a row of zeros, and
+most need only "view the studio". Money follows the fees pages: owed for
+anyone who handles fees, collected only with "view financials".
+
+**Consequences:** reports are computed from the live tables on each
+request, which is instant at one studio's size. The plan's "daily rollup
+tables" stay unbuilt until a studio is big enough to need them.
+`/reports/fees` can create the month's fees on first look, like the fees
+pages. The class history graph shows only meetings someone marked or
+cancelled: an unmarked meeting says nothing about who came.
+
 ## 2026-11-23: Money that can't be edited, only cancelled
 
 **Context:** fees: what students owe, what they paid, receipts.

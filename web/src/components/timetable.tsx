@@ -1,5 +1,5 @@
-import Link from "next/link";
 
+import { TravelLink } from "@/components/travel";
 import { WEEKDAY_LONG, minutesOf, weekdayShort } from "@/lib/format";
 import type { BatchSummary, Slot } from "@/lib/types";
 
@@ -122,7 +122,10 @@ export function Timetable({
               const where = [showBranch ? p.batch.branch_name : null, p.batch.room_name].filter(Boolean).join(" · ");
               return (
                 <li key={`${p.batch.id}-${p.slot.weekday}-${p.slot.starts_at}`}>
-                  <Link
+                  <TravelLink
+                    kind="class"
+                    id={p.batch.id}
+                    label={p.batch.name}
                     href={`/classes/${p.batch.id}`}
                     className="tt-block"
                     data-full={f.full ? "" : undefined}
@@ -147,7 +150,7 @@ export function Timetable({
                       {f.full ? "Full" : f.label}
                       {mine ? " · You teach" : where ? ` · ${where}` : ""}
                     </span>
-                  </Link>
+                  </TravelLink>
                 </li>
               );
             })}
@@ -178,7 +181,7 @@ function Agenda({
     <div className="tt-agenda">
       {ordered.map((d) => (
         <section key={d.weekday} aria-labelledby={`day-${d.weekday}`}>
-          <h2 id={`day-${d.weekday}`} className="font-display m-0 mb-2 text-[18px] font-semibold">
+          <h2 id={`day-${d.weekday}`} className="h-card mb-2">
             {WEEKDAY_LONG[d.weekday - 1]}
             {d.weekday === todayWeekday ? <span className="tag tag-good ml-2 align-middle">Today</span> : null}
           </h2>
@@ -190,7 +193,10 @@ function Agenda({
                 const mine = p.batch.instructor_id === myStaffId;
                 return (
                   <li key={`${p.batch.id}-${p.slot.starts_at}`}>
-                    <Link
+                    <TravelLink
+                      kind="class"
+                      id={p.batch.id}
+                      label={p.batch.name}
                       href={`/classes/${p.batch.id}`}
                       className="row flex flex-col gap-1 px-4 py-3 no-underline"
                       style={{ color: "inherit", boxShadow: mine ? "inset 3px 0 0 var(--accent)" : undefined }}
@@ -215,7 +221,7 @@ function Agenda({
                           .filter(Boolean)
                           .join(" · ")}
                       </span>
-                    </Link>
+                    </TravelLink>
                   </li>
                 );
               })}

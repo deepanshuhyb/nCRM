@@ -2,13 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { NotAllowed } from "@/components/not-allowed";
-import { getFeesSummary, getMe, getSummary, listBranches, listDues, listPayments } from "@/lib/api-server";
-import { addDays, formatDate, formatDay, formatRupees } from "@/lib/format";
+import { Bars, Meter, Ranked } from "@/components/graphs";
+import { TravelLink, Travels } from "@/components/travel";
+import { Page, PageHeader } from "@/components/ui";
+import { getFeesReport, getFeesSummary, getMe, getSummary, listBranches, listDues, listPayments } from "@/lib/api-server";
+import { addDays, formatDate, formatDay, formatDayShort, formatPercent, formatRupees } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/types";
 
 import { MonthlyFeesSetup } from "./fee-settings";
 
 export const metadata: Metadata = { title: "Fees" };
+
+const AGE_LABEL = { not_due: "Not due yet", week: "Up to a week late", month: "Up to a month late", older: "More than a month late" } as const;
 
 const PAGE = 50;
 /** How far back the payments list goes for roles without financial reports. */
@@ -25,7 +30,7 @@ export default async function FeesPage({ searchParams }: PageProps<"/fees">) {
   if (!can.has("manage_fees")) return <NotAllowed what="fees" />;
 
   const params = await searchParams;
-  const [fees, home, branches] = await Promise.all([getFeesSummary(), getSummary(), listBranches()]);
+  const [fees, home, branches, report] = await Promise.all([getFeesSummary(), getSummary(), listBranches(), getFeesReport()]);
   const today = home.today;
   const branch = branches.find((b) => b.id === params.branch);
   const page = Math.max(1, Math.min(10_000, Number(params.page) || 1));
@@ -51,53 +56,101 @@ export default async function FeesPage({ searchParams }: PageProps<"/fees">) {
   const pages = Math.max(1, Math.ceil(dues.total / PAGE));
   const thisMonth = monthName(today);
 
-  return (
-    <div className="flex flex-col gap-[18px]">
-      <div>
-        <h1 className="font-display m-0 text-[32px] leading-tight font-semibold">Fees</h1>
-        <p className="soft mt-2 mb-0">
-          {fees.due_paise === 0
-            ? "Nothing to collect right now."
-            : `${formatRupees(fees.due_paise)} to collect from ${fees.students_owing} ${fees.students_owing === 1 ? "student" : "students"}.`}
-        </p>
-      </div>
+  const ageMax = Math.max(1, ...report.ageing.map((x) => x.due_paise));
+  const collection = report.collection;
+  const dayMax = collection ? Math.max(1, ...collection.days.map((d) => d.collected_paise)) : 1;
+  const ageing = (
+    <Ranked
+      label="Fees owed by how late they are"
+      rows={report.ageing.map((x) => ({
+        key: x.key,
+        name: AGE_LABEL[x.key],
+        value: x.due_paise > 0 ? `${formatRupees(x.due_paise)} · ${x.students} ${x.students === 1 ? "student" : "students"}` : "None",
+        share: x.due_paise / ageMax,
+        tone: x.key === "not_due" ? ("neutral" as const) : ("attn" as const),
+      }))}
+    />
+  );
 
-      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-3">
-        <div className="glass flex flex-col gap-2 p-[22px]">
-          <span className="muted text-sm font-medium">To collect</span>
-          <span className="font-display text-[34px] leading-none font-semibold tabular-nums">{formatRupees(fees.due_paise)}</span>
-          <span className="soft text-[13px]">Everything charged and not yet paid</span>
-        </div>
-        <div className={`glass ${fees.overdue_paise > 0 ? "glass-attn" : ""} flex flex-col gap-2 p-[22px]`}>
-          <span className="muted text-sm font-medium">Overdue</span>
-          <span className="font-display text-[34px] leading-none font-semibold tabular-nums">{formatRupees(fees.overdue_paise)}</span>
-          <span className={fees.overdue_paise > 0 ? "attn-text text-[13px] font-semibold" : "soft text-[13px]"}>
-            {fees.overdue_paise > 0 ? "Past its due date" : "Nothing is late"}
-          </span>
-        </div>
-        {fees.collected_this_month_paise !== null ? (
-          <div className="glass flex flex-col gap-2 p-[22px]">
-            <span className="muted text-sm font-medium">Collected in {thisMonth}</span>
-            <span className="font-display text-[34px] leading-none font-semibold tabular-nums">
-              {formatRupees(fees.collected_this_month_paise)}
-            </span>
-            <span className="soft text-[13px]">Money received so far this month</span>
+  return (
+    <Page>
+      <PageHeader
+        title="Fees"
+        lead={
+          fees.due_paise === 0
+            ? "Nothing to collect right now."
+            : `${formatRupees(fees.due_paise)} to collect from ${fees.students_owing} ${fees.students_owing === 1 ? "student" : "students"}.`
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-3">
+        <section aria-labelledby="fees-hero" className="hero flex flex-col gap-5 p-6 sm:p-8 lg:col-span-2">
+          {collection ? (
+            <>
+              <h2 id="fees-hero" className="stat-label m-0 text-sm">
+                Collected in {thisMonth}
+              </h2>
+              <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
+                <span className="num text-[44px] sm:text-[60px]">{formatRupees(collection.collected_paise)}</span>
+                {collection.charged_paise > 0 ? (
+                  <p className="m-0 max-w-[30ch] pb-2 font-semibold" style={{ color: "var(--hero-soft)" }}>
+                    of {formatRupees(collection.charged_paise)} due this month, {formatPercent(Math.min(1, collection.collected_paise / collection.charged_paise))} in.
+                  </p>
+                ) : null}
+              </div>
+              {collection.charged_paise > 0 ? <Meter value={collection.collected_paise / collection.charged_paise} /> : null}
+              <Bars
+                height={110}
+                bars={collection.days.map((d) => ({
+                  key: formatDayShort(d.date),
+                  value: d.collected_paise === 0 ? null : d.collected_paise / dayMax,
+                  tip: `${formatDayShort(d.date)}: ${formatRupees(d.collected_paise)}`,
+                }))}
+                label={`Money received each day in ${thisMonth}, ${formatRupees(collection.collected_paise)} in all.`}
+                from={`1 ${thisMonth.slice(0, 3)}`}
+                to="Today"
+              />
+            </>
+          ) : (
+            <>
+              <h2 id="fees-hero" className="stat-label m-0 text-sm">
+                To collect
+              </h2>
+              <span className="num text-[44px] sm:text-[60px]">{formatRupees(fees.due_paise)}</span>
+              <p className="m-0 font-semibold" style={{ color: "var(--hero-soft)" }}>
+                {fees.overdue_paise > 0 ? `${formatRupees(fees.overdue_paise)} of it is past its due date.` : "Nothing is late."}
+              </p>
+            </>
+          )}
+        </section>
+
+        <section aria-labelledby="age-title" className="panel flex flex-col gap-4 p-5 sm:p-6">
+          <div>
+            <h2 id="age-title" className="h-card">
+              {fees.overdue_paise > 0
+                ? `${formatRupees(fees.overdue_paise)} is overdue`
+                : fees.due_paise > 0
+                  ? "Nothing is overdue yet"
+                  : "Nobody owes anything"}
+            </h2>
+            <p className="caption m-0 mt-1">
+              What&apos;s owed, by how late it is
+            </p>
           </div>
-        ) : null}
+          {ageing}
+        </section>
       </div>
 
       {can.has("manage_classes") ? (
         <MonthlyFeesSetup feesFrom={fees.fees_from} dueDay={fees.fee_due_day} today={today} />
       ) : fees.fees_from === null ? (
-        <p className="glass m-0 p-5 text-sm font-semibold">
-          Monthly fees aren&apos;t being created yet. An owner or manager switches them on here.
-        </p>
+        <p className="panel m-0 p-5 font-semibold">Monthly fees aren&apos;t being created yet. An owner or manager switches them on here.</p>
       ) : null}
 
-      <div className="flex flex-wrap items-start gap-[18px]">
-        <section aria-labelledby="dues-title" className="glass flex min-w-0 flex-[3_1_440px] flex-col gap-3 p-4 sm:p-6">
+      <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-5">
+        <section aria-labelledby="dues-title" className="panel flex min-w-0 flex-col gap-3 p-4 sm:p-6 lg:col-span-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="dues-title" className="font-display m-0 text-[20px] font-semibold">
+            <h2 id="dues-title" className="h-section">
               {dues.total === 0 ? "Nobody owes anything" : `${dues.total} ${dues.total === 1 ? "student owes" : "students owe"}`}
               {branch ? ` at ${branch.name}` : ""}
             </h2>
@@ -121,13 +174,15 @@ export default async function FeesPage({ searchParams }: PageProps<"/fees">) {
               {fees.due_paise === 0 ? "When a fee is due or a pack is sold on credit, it shows up here." : "Nobody at this branch owes anything."}
             </p>
           ) : (
-            <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+            <ul className="m-0 flex list-none flex-col gap-1.5 p-0" data-live>
               {dues.items.map((d) => (
                 <li key={d.student_id} className="row flex flex-wrap items-center justify-between gap-3 p-3">
                   <span className="min-w-0 flex-1">
-                    <Link href={`/students/${d.student_id}#fees`} className="block font-bold">
-                      {d.student_name}
-                    </Link>
+                    <TravelLink kind="student" id={d.student_id} label={d.student_name} href={`/students/${d.student_id}#fees`} className="block font-bold">
+                      <Travels kind="student" id={d.student_id}>
+                        <span>{d.student_name}</span>
+                      </Travels>
+                    </TravelLink>
                     <span className="muted text-[13px]">{d.branch_name ?? "No branch"}</span>
                   </span>
                   <span className="flex flex-col items-end">
@@ -168,9 +223,9 @@ export default async function FeesPage({ searchParams }: PageProps<"/fees">) {
           ) : null}
         </section>
 
-        <section aria-labelledby="payments-title" className="glass flex min-w-0 flex-[2_1_340px] flex-col gap-3 p-4 sm:p-6">
+        <section aria-labelledby="payments-title" className="panel flex min-w-0 flex-col gap-3 p-4 sm:p-6 lg:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id="payments-title" className="font-display m-0 text-[20px] font-semibold">
+            <h2 id="payments-title" className="h-section">
               {day === today ? "Received today" : `Received on ${formatDay(day)}`}
             </h2>
             <nav aria-label="Day" className="flex gap-2">
@@ -186,7 +241,7 @@ export default async function FeesPage({ searchParams }: PageProps<"/fees">) {
               ) : null}
             </nav>
           </div>
-          <p className="font-display m-0 text-[34px] leading-none font-semibold tabular-nums">{formatRupees(payments.collected_paise)}</p>
+          <p className="num m-0 text-[34px]">{formatRupees(payments.collected_paise)}</p>
           {payments.by_method.length > 0 ? (
             <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="By method">
               {payments.by_method.map((m) => (
@@ -224,6 +279,6 @@ export default async function FeesPage({ searchParams }: PageProps<"/fees">) {
           )}
         </section>
       </div>
-    </div>
+    </Page>
   );
 }

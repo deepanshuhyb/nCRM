@@ -86,8 +86,8 @@ export function ImportFlow({ branches, today }: { branches: { id: string; name: 
 
   if (result) {
     return (
-      <section className="glass flex flex-col gap-3 p-6" aria-live="polite">
-        <h2 className="font-display m-0 text-[24px] font-semibold">
+      <section className="panel flex flex-col gap-3 p-6" aria-live="polite">
+        <h2 className="h-section">
           {result.added} {result.added === 1 ? "student" : "students"} added
         </h2>
         <p className="soft m-0">
@@ -121,8 +121,8 @@ export function ImportFlow({ branches, today }: { branches: { id: string; name: 
 
   return (
     <div className="flex flex-col gap-[18px]">
-      <section className="glass flex flex-col gap-4 p-6" aria-labelledby="file-title">
-        <h2 id="file-title" className="font-display m-0 text-[20px] font-semibold">
+      <section className="panel flex flex-col gap-4 p-6" aria-labelledby="file-title">
+        <h2 id="file-title" className="h-section">
           Your file
         </h2>
         <div>
@@ -184,9 +184,9 @@ export function ImportFlow({ branches, today }: { branches: { id: string; name: 
 
       {preview ? (
         <>
-          <section className="glass flex flex-col gap-4 p-6" aria-labelledby="preview-title">
+          <section className="panel flex flex-col gap-4 p-6" aria-labelledby="preview-title">
             <div>
-              <h2 id="preview-title" className="font-display m-0 text-[22px] font-semibold">
+              <h2 id="preview-title" className="h-section">
                 {preview.ready === 0
                   ? "Nothing new to add"
                   : `${preview.ready} of ${preview.total} ${preview.total === 1 ? "row" : "rows"} ready to add`}
@@ -221,8 +221,8 @@ export function ImportFlow({ branches, today }: { branches: { id: string; name: 
           </section>
 
           {skipped.length > 0 ? (
-            <section className="glass flex flex-col gap-2 p-6" aria-labelledby="skipped-title">
-              <h2 id="skipped-title" className="font-display m-0 mb-1 text-[20px] font-semibold">
+            <section className="panel flex flex-col gap-2 p-6" aria-labelledby="skipped-title">
+              <h2 id="skipped-title" className="h-section mb-1">
                 Won&apos;t be added
               </h2>
               <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
@@ -244,8 +244,8 @@ export function ImportFlow({ branches, today }: { branches: { id: string; name: 
           ) : null}
 
           {groups.length > 0 ? (
-            <section className="glass flex flex-col gap-2 p-6" aria-labelledby="notes-title">
-              <h2 id="notes-title" className="font-display m-0 mb-1 text-[20px] font-semibold">
+            <section className="panel flex flex-col gap-2 p-6" aria-labelledby="notes-title">
+              <h2 id="notes-title" className="h-section mb-1">
                 Added, with a note
               </h2>
               <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
@@ -264,8 +264,8 @@ export function ImportFlow({ branches, today }: { branches: { id: string; name: 
           ) : null}
 
           {sample.length > 0 ? (
-            <section className="glass flex flex-col gap-2 p-6" aria-labelledby="sample-title">
-              <h2 id="sample-title" className="font-display m-0 mb-1 text-[20px] font-semibold">
+            <section className="panel flex flex-col gap-2 p-6" aria-labelledby="sample-title">
+              <h2 id="sample-title" className="h-section mb-1">
                 {preview.ready > sample.length ? `The first ${sample.length} to be added` : "To be added"}
               </h2>
               <ul className="m-0 flex list-none flex-col gap-1.5 p-0">

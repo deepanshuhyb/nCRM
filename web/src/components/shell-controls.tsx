@@ -4,20 +4,22 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { Icon } from "@/components/icons";
 import { apiSend } from "@/lib/api-client";
-
 import { BOTTOM_NAV_SLOTS, type NavItem } from "@/lib/nav";
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function TopNav({ items }: { items: NavItem[] }) {
+/** The desktop sidebar's page list. */
+export function SideNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Main" className="top-nav segmented glass">
+    <nav aria-label="Main" className="flex flex-col gap-[3px]">
       {items.map((item) => (
-        <Link key={item.href} href={item.href} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
+        <Link key={item.href} href={item.href} className="nav-item" aria-current={isActive(pathname, item.href) ? "page" : undefined}>
+          <Icon name={item.icon} />
           {item.label}
         </Link>
       ))}
@@ -38,16 +40,18 @@ export function BottomNav({ items }: { items: NavItem[] }) {
   return (
     <nav
       aria-label="Main"
-      className="bottom-nav glass"
+      className="bottom-nav float"
       style={{ gridTemplateColumns: `repeat(${shown.length + (overflow ? 1 : 0)}, minmax(0, 1fr))` }}
     >
       {shown.map((item) => (
         <Link key={item.href} href={item.href} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
+          <Icon name={item.icon} />
           {item.label}
         </Link>
       ))}
       {overflow ? (
         <Link href="/more" aria-current={inMore ? "page" : undefined}>
+          <Icon name="more" />
           More
         </Link>
       ) : null}
@@ -106,21 +110,12 @@ export function ThemeToggle({ initial }: { initial: "daylight" | "emerald" }) {
   return (
     <button
       type="button"
-      className="btn btn-ghost min-h-[44px] w-[44px] px-0"
+      className="btn btn-ghost btn-icon"
       onClick={toggle}
       aria-label={theme === "daylight" ? "Switch to dark theme" : "Switch to light theme"}
       title={theme === "daylight" ? "Dark theme" : "Light theme"}
     >
-      {theme === "daylight" ? (
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-        </svg>
-      ) : (
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
-          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      )}
+      <Icon name={theme === "daylight" ? "moon" : "sun"} size={18} />
     </button>
   );
 }
@@ -140,7 +135,8 @@ export function SignOutButton() {
   }
 
   return (
-    <button type="button" className="btn btn-ghost min-h-[44px]" onClick={signOut} disabled={busy}>
+    <button type="button" className="btn btn-quiet justify-start" onClick={signOut} disabled={busy}>
+      <Icon name="out" size={18} />
       {busy ? "Signing out…" : "Sign out"}
     </button>
   );

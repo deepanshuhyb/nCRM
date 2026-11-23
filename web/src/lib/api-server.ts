@@ -12,9 +12,13 @@ import type {
   BatchSummary,
   Branch,
   Credits,
+  DayAttendance,
   DueRow,
+  FeesReport,
   FeesSummary,
   Me,
+  MeetingCount,
+  MonthStudents,
   Page,
   PaymentsList,
   Plan,
@@ -208,3 +212,18 @@ export const getReceipt = (paymentId: string): Promise<Receipt> =>
 
 export const getStudentFees = (studentId: string): Promise<StudentFees> =>
   apiGet<StudentFees>(`/students/${encodeURIComponent(studentId)}/fees`);
+
+// --------------------------------------------------------------- reports
+
+/** Marks per day across the studio for the last `days` days, oldest first. */
+export const getAttendanceReport = (days = 28): Promise<DayAttendance[]> => apiGet<DayAttendance[]>(`/reports/attendance?days=${days}`);
+
+/** Joined and left per month, last six months, oldest first. */
+export const getStudentsReport = (): Promise<MonthStudents[]> => apiGet<MonthStudents[]>("/reports/students");
+
+/** Dues by age; this month's collection for roles allowed to see it. */
+export const getFeesReport = (): Promise<FeesReport> => apiGet<FeesReport>("/reports/fees");
+
+/** A class's last eight marked meetings, oldest first. */
+export const getClassHistory = (batchId: string): Promise<MeetingCount[]> =>
+  apiGet<MeetingCount[]>(`/batches/${encodeURIComponent(batchId)}/history`);

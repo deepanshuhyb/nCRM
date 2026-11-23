@@ -40,13 +40,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" data-theme={theme} className={`${display.variable} ${body.variable}`}>
       <body>
-        <div className="counts" aria-hidden="true">
-          <span className="c5">5</span>
-          <span className="c6">6</span>
-          <span className="c7">7</span>
-          <span className="c8">8</span>
-        </div>
-        <div className="page-layer">{children}</div>
+        {children}
       </body>
     </html>
   );

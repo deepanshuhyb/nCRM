@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { NotAllowed } from "@/components/not-allowed";
+import { Page } from "@/components/ui";
 import { getMe, listPlans } from "@/lib/api-server";
 import { formatRupees } from "@/lib/format";
 import type { Plan, PlanKind } from "@/lib/types";
@@ -32,13 +33,13 @@ export default async function PlansPage() {
   const canEdit = can.has("manage_classes");
 
   return (
-    <div className="flex flex-col gap-[18px]">
-      <Link href="/classes" className="btn btn-quiet self-start px-0">
+    <Page>
+      <Link href="/classes" className="back-link self-start">
         Classes
       </Link>
       <div>
-        <h1 className="font-display m-0 text-[32px] leading-tight font-semibold">Prices and packs</h1>
-        <p className="soft mt-2 mb-0">
+        <h1 className="h-page">Prices and packs</h1>
+        <p className="lead">
           {canEdit
             ? "Changing a price doesn't change packs already sold."
             : "Front desk sells packs from a student's profile. Owners and managers set the prices."}
@@ -50,8 +51,8 @@ export default async function PlansPage() {
           {SECTIONS.map((section) => {
             const list = plans.filter((p) => p.kind === section.kind);
             return (
-              <section key={section.kind} aria-labelledby={`plans-${section.kind}`} className="glass flex flex-col gap-2 p-5">
-                <h2 id={`plans-${section.kind}`} className="font-display m-0 mb-1 text-[20px] font-semibold">
+              <section key={section.kind} aria-labelledby={`plans-${section.kind}`} className="panel flex flex-col gap-2 p-5">
+                <h2 id={`plans-${section.kind}`} className="h-section mb-1">
                   {section.title}
                 </h2>
                 {list.length === 0 ? (
@@ -85,6 +86,6 @@ export default async function PlansPage() {
           </aside>
         ) : null}
       </div>
-    </div>
+    </Page>
   );
 }

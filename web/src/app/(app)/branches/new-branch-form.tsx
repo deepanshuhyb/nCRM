@@ -43,8 +43,8 @@ export function NewBranchForm() {
   }
 
   return (
-    <form onSubmit={submit} noValidate className="glass flex flex-col gap-4 p-6" aria-labelledby="new-branch-title">
-      <h2 id="new-branch-title" className="font-display m-0 text-[20px] font-semibold">
+    <form onSubmit={submit} noValidate className="panel flex flex-col gap-4 p-6" aria-labelledby="new-branch-title">
+      <h2 id="new-branch-title" className="h-section">
         Add a branch
       </h2>
       <div>

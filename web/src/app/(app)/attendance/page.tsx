@@ -1,12 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { Meter } from "@/components/graphs";
+import { SessionRow, sessionState } from "@/components/session-row";
+import { EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
 import { getAttendanceAlerts, getMe, getSummary, listBranches, listSessions } from "@/lib/api-server";
-import { SessionRow } from "@/components/session-row";
-import { addDays, formatDay } from "@/lib/format";
+import { addDays, formatDay, minutesOf } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Today" };
 
+/**
+ * One day's classes. The inverted block is the day as a strip (each class
+ * a block as wide as it is long, filled once it's marked), so "what's left
+ * to do today" is answered before reading a word.
+ */
 export default async function AttendancePage({ searchParams }: PageProps<"/attendance">) {
   const params = await searchParams;
   const [me, summary, branches] = await Promise.all([getMe(), getSummary(), listBranches()]);
@@ -29,39 +36,84 @@ export default async function AttendancePage({ searchParams }: PageProps<"/atten
     return `/attendance${qs ? `?${qs}` : ""}`;
   };
 
+  const running = sessions.filter((s) => s.status === "scheduled");
+  const done = running.filter((s) => sessionState(s).state === "done").length;
+  const due = running.filter((s) => sessionState(s).state === "due").length;
+  const came = running.reduce((n, s) => n + s.came, 0);
+  const marked = came + running.reduce((n, s) => n + s.away, 0);
+
   return (
-    <div className="flex flex-col gap-[18px]">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display m-0 text-[32px] leading-tight font-semibold">{isToday ? "Today" : formatDay(date)}</h1>
-          <p className="soft mt-2 mb-0">
-            {isToday ? `${formatDay(date)}. ` : ""}
-            {sessions.length === 0
-              ? "No classes on this day."
-              : `${sessions.length} ${sessions.length === 1 ? "class" : "classes"}. Tap one to mark who came.`}
-          </p>
-        </div>
-        <nav aria-label="Day" className="flex flex-wrap gap-2">
-          {date > addDays(today, -90) ? (
-            <Link href={href({ date: addDays(date, -1) })} className="btn btn-ghost">
-              Day before
-            </Link>
-          ) : null}
-          {!isToday ? (
-            <>
-              <Link href={href({ date: addDays(date, 1) })} className="btn btn-ghost">
-                Day after
+    <Page>
+      <PageHeader
+        title={isToday ? "Today" : formatDay(date)}
+        lead={
+          sessions.length === 0
+            ? `${isToday ? `${formatDay(date)}. ` : ""}No classes on this day.`
+            : `${isToday ? `${formatDay(date)}. ` : ""}${sessions.length} ${sessions.length === 1 ? "class" : "classes"}. Tap one to mark who came.`
+        }
+        actions={
+          <nav aria-label="Day" className="flex flex-wrap gap-2">
+            {date > addDays(today, -90) ? (
+              <Link href={href({ date: addDays(date, -1) })} className="btn btn-ghost">
+                Day before
               </Link>
-              <Link href={href({ date: today })} className="btn btn-dark">
-                Today
-              </Link>
-            </>
-          ) : null}
-        </nav>
-      </div>
+            ) : null}
+            {!isToday ? (
+              <>
+                <Link href={href({ date: addDays(date, 1) })} className="btn btn-ghost">
+                  Day after
+                </Link>
+                <Link href={href({ date: today })} className="btn btn-dark">
+                  Today
+                </Link>
+              </>
+            ) : null}
+          </nav>
+        }
+      />
+
+      {running.length > 0 ? (
+        <section aria-labelledby="day-title" className="hero flex flex-col gap-5 p-6 sm:p-7">
+          <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+            <div>
+              <h2 id="day-title" className="stat-label m-0 text-sm">
+                {isToday ? "The day so far" : "How the day went"}
+              </h2>
+              <p className="num m-0 mt-2 text-[44px] sm:text-[56px]">
+                {done} of {running.length}
+              </p>
+              <p className="m-0 mt-2 font-semibold" style={{ color: "var(--hero-soft)" }}>
+                {running.length === 1 ? "class" : "classes"} marked
+                {due > 0 ? `. ${due} ${due === 1 ? "is" : "are"} over and waiting.` : marked > 0 ? `. ${came} of ${marked} students came.` : "."}
+              </p>
+            </div>
+            <div className="min-w-[180px] flex-1 sm:max-w-[320px]">
+              <Meter value={done / running.length} />
+            </div>
+          </div>
+          <nav aria-label="Classes through the day" className="day-strip">
+            {sessions.map((s) => {
+              const st = sessionState(s);
+              return (
+                <Link
+                  key={s.id}
+                  href={`/attendance/${s.id}`}
+                  data-state={st.state}
+                  style={{ ["--w" as string]: Math.max(30, minutesOf(s.ends_at) - minutesOf(s.starts_at)) }}
+                  aria-label={`${s.batch_name}, ${s.starts_at}, ${st.label}`}
+                  title={`${s.batch_name}: ${st.label}`}
+                >
+                  <span className="tabular-nums">{s.starts_at}</span>
+                  <span className="hidden truncate sm:block">{s.batch_name}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </section>
+      ) : null}
 
       {branches.length > 1 ? (
-        <nav aria-label="Branch" className="segmented glass self-start">
+        <nav aria-label="Branch" className="segmented self-start">
           <Link href={href({ branch: null })} aria-current={!branch ? "page" : undefined}>
             All branches
           </Link>
@@ -75,12 +127,20 @@ export default async function AttendancePage({ searchParams }: PageProps<"/atten
         </nav>
       ) : null}
 
-      <div className="flex flex-wrap items-start gap-[18px]">
-        <section aria-label="Classes" className="glass min-w-0 flex-[3_1_420px] p-2">
+      <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-5">
+        <section aria-labelledby="classes-title" className="panel flex flex-col gap-3 p-4 sm:p-6 lg:col-span-3">
+          <SectionHeader id="classes-title" title="Classes" aside={sessions.length > 0 ? `${sessions.length}` : undefined} />
           {sessions.length === 0 ? (
-            <p className="m-0 p-5 font-semibold">
-              Nothing on the timetable for this day. <Link href="/classes">See the week</Link>.
-            </p>
+            <EmptyState
+              title="Nothing on the timetable"
+              action={
+                <Link href="/classes" className="btn btn-ghost">
+                  See the week
+                </Link>
+              }
+            >
+              No class meets on this day{branch ? ` at ${branch.name}` : ""}.
+            </EmptyState>
           ) : (
             <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
               {sessions.map((s) => (
@@ -92,11 +152,9 @@ export default async function AttendancePage({ searchParams }: PageProps<"/atten
           )}
         </section>
 
-        <aside className="flex min-w-0 flex-[2_1_320px] flex-col gap-[18px]">
-          <section aria-labelledby="unmarked-title" className={`glass ${otherDays.length > 0 ? "glass-attn" : ""} flex flex-col gap-2 p-5`}>
-            <h2 id="unmarked-title" className="font-display m-0 text-[20px] font-semibold">
-              {otherDays.length > 0 ? `${otherDays.length} earlier ${otherDays.length === 1 ? "class needs" : "classes need"} marking` : "Nothing waiting from earlier days"}
-            </h2>
+        <aside className="flex min-w-0 flex-col gap-[18px] lg:col-span-2">
+          <section aria-labelledby="unmarked-title" className={`panel ${otherDays.length > 0 ? "panel-attn" : ""} flex flex-col gap-3 p-4 sm:p-6`}>
+            <SectionHeader id="unmarked-title" title="Still to mark" aside={otherDays.length > 0 ? `${otherDays.length} earlier` : undefined} />
             {otherDays.length > 0 ? (
               <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
                 {otherDays.slice(0, 8).map((s) => (
@@ -106,16 +164,14 @@ export default async function AttendancePage({ searchParams }: PageProps<"/atten
                 ))}
               </ul>
             ) : (
-              <p className="soft m-0 text-sm">Classes from the last week are all marked.</p>
+              <p className="soft m-0">Classes from the last week are all marked.</p>
             )}
           </section>
 
-          <section aria-labelledby="streaks-title" className="glass flex flex-col gap-2 p-5">
-            <h2 id="streaks-title" className="font-display m-0 text-[20px] font-semibold">
-              Missing class after class
-            </h2>
+          <section aria-labelledby="streaks-title" className="panel flex flex-col gap-3 p-4 sm:p-6">
+            <SectionHeader id="streaks-title" title="Missing class after class" aside={alerts.streaks.length > 0 ? `${alerts.streaks.length}` : undefined} />
             {alerts.streaks.length === 0 ? (
-              <p className="soft m-0 text-sm">Nobody has missed three classes in a row.</p>
+              <p className="soft m-0">Nobody has missed three classes in a row.</p>
             ) : (
               <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
                 {alerts.streaks.slice(0, 10).map((s) => (
@@ -128,7 +184,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/atten
                       ) : (
                         <span className="block font-bold">{s.student_name}</span>
                       )}
-                      <span className="muted text-[13px]">{s.batch_name}</span>
+                      <span className="caption">{s.batch_name}</span>
                     </span>
                     <span className="tag tag-attn shrink-0">Missed {s.absences} in a row</span>
                   </li>
@@ -138,6 +194,6 @@ export default async function AttendancePage({ searchParams }: PageProps<"/atten
           </section>
         </aside>
       </div>
-    </div>
+    </Page>
   );
 }
