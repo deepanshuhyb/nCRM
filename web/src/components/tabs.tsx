@@ -31,7 +31,11 @@ export function Tabs({ tabs, panels, label }: { tabs: Tab[]; panels: ReactNode[]
   const active = tabs.some((t) => t.id === hash) ? hash : tabs[0].id;
 
   function choose(id: string) {
-    window.history.replaceState(window.history.state, "", `#${id}`);
+    // `null`, not the current history state: Next.js only notices an
+    // address change made with its own state left out. Passing its state
+    // back made the router forget the fragment, so the next refresh (after
+    // saving a payment, say) dropped it and the page jumped to the first tab.
+    window.history.replaceState(null, "", `#${id}`);
     rerender((n) => n + 1);
   }
 

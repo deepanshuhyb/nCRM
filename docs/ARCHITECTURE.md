@@ -109,6 +109,7 @@ web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
   src/lib/nav.ts             which pages a role sees, in one place
   public/templates/          the student import template (.xlsx, .csv)
 scripts/make_student_template.py  rebuilds that template
+scripts/ui-audit/                 browser checks of every screen (see docs/UI_AUDIT.md); not part of CI
   src/lib/api-server.ts      server-side API calls (server-only)
   src/lib/api-client.ts      browser-side API calls through /api
   src/lib/bff.ts, csp.ts, safe-redirect.ts   security helpers (unit-tested)

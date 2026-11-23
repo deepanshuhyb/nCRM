@@ -73,8 +73,16 @@ Three kinds, and only the last one blurs.
   Under `prefers-reduced-transparency`, or where blur is unsupported, it
   becomes solid.
 
-The count behind the page (`<Counts />`) appears on sign-in and Home only.
-It is a fixed layer with paint containment, so it is drawn once.
+The count behind the page (`<Counts />`) appears on sign-in only. It was
+on Home too, and showed through the gaps between panels and behind the
+sidebar; a dashboard has enough on it. It is a fixed layer with paint
+containment, so it is drawn once.
+
+**Rows.** A row has at most three lines: the name, then one or two
+captions. When the name is a link, give it the class `stretch` and the
+whole row becomes the tap target; buttons in the row keep working (see
+NOTES, "Rows that are tappable anywhere"). A status tag appears only when
+it tells you something the list's filter doesn't.
 
 ## Layout
 
@@ -82,7 +90,11 @@ It is a fixed layer with paint containment, so it is drawn once.
   studio's name, studio switcher, sign out and theme. The page is at most
   1240px wide.
 - Phones: a slim top bar, and a floating bottom bar with four pages and
-  "More". Every screen works at 390px.
+  "More". Every screen works at 390px with no sideways scrolling.
+  Nothing is smaller than 12px, and anything you tap is at least 44px
+  tall. Filters (`.segmented`) stay on one line and scroll sideways
+  instead of wrapping. Figures (`Stat`) sit three across in compact tiles.
+  `docs/UI_AUDIT.md` has the checks and how to run them.
 - A page is `<Page>` (from `components/ui.tsx`) with a `PageHeader`
   (where you came from, title, one line, actions), then the inverted
   block, then figures (`Stat`), then lists. The most important thing is
@@ -153,7 +165,9 @@ the timetable: no chart library, no script, and they print.
 ## The timetable
 
 The classes page's one bold element. The week runs across, time runs
-down, one hour is 72px. Each class is a row-tinted block inside one panel
+down, one hour is 84px. Two or more hours with no class anywhere in the
+week are drawn as one short strip ("No classes 12:00 to 16:00"), so the
+hours that have classes get the room. Each class is a row-tinted block inside one panel
 whose fill rises from the bottom as places are
 taken, in the "fine" tint; a full class takes the attention tint and
 border. The fill has no top edge: a line there reads as a strikethrough
@@ -163,9 +177,15 @@ teach". Today's column has a faint tint and a dark day pill. Below 900px
 the grid becomes a list by day, starting today, with a small meter per
 class. The whole thing is server-rendered: no JavaScript.
 
+A block's lines are in order of importance: time, name, how full, where.
+A line that doesn't fit is left out whole, never cut through (see NOTES,
+"The timetable drops whole lines"). Classes sharing an hour show the start
+time, the name and a short count, and open to the full width of the day on
+hover or keyboard focus.
+
 Every block is a link whose accessible name says the class, day, time,
 place, teacher and how full it is, and the same text is the hover title,
-since narrow blocks truncate.
+since narrow blocks leave things out.
 
 ## Marking attendance
 

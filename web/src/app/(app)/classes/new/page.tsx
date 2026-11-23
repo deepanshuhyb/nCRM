@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { NotAllowed } from "@/components/not-allowed";
 import { Page } from "@/components/ui";
@@ -16,6 +17,9 @@ export default async function NewClassPage() {
   return (
     <Page narrow>
       <div>
+        <Link href="/classes" className="back-link">
+          Timetable
+        </Link>
         <h1 className="h-page">Add a class</h1>
         <p className="lead">A class that meets every week. Students join it from their profile or from the class page.</p>
       </div>

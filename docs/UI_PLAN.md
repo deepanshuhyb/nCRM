@@ -155,5 +155,7 @@ screenshots at 1400px and 390px in both themes.
 
 1. Left sidebar on desktop (recommended), or keep the top pill row?
 2. Giant background numerals only on Home and sign-in (recommended), or
-   everywhere, or gone?
+   everywhere, or gone? *(Chosen: Home and sign-in. Changed on 23 Nov 2026
+   to sign-in only, after the audit in `UI_AUDIT.md` found them showing
+   through the gaps on Home.)*
 3. Student profile as tabs (recommended) or one long page?

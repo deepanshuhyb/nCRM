@@ -37,17 +37,21 @@ function edge(i: number, n: number): "start" | "end" | undefined {
 /** A table only screen readers meet: the graph's numbers as text. */
 function Numbers({ caption, rows }: { caption: string; rows: [string, string][] }) {
   return (
-    <table className="sr-only">
-      <caption>{caption}</caption>
-      <tbody>
-        {rows.map(([name, value]) => (
-          <tr key={name}>
-            <th scope="row">{name}</th>
-            <td>{value}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    // The wrapper is what hides it: a <table> ignores the width and
+    // overflow that `sr-only` sets, and would stretch the page sideways.
+    <div className="sr-only">
+      <table>
+        <caption>{caption}</caption>
+        <tbody>
+          {rows.map(([name, value]) => (
+            <tr key={name}>
+              <th scope="row">{name}</th>
+              <td>{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -3,8 +3,44 @@ import { TravelLink } from "@/components/travel";
 import { WEEKDAY_LONG, minutesOf, weekdayShort } from "@/lib/format";
 import type { BatchSummary, Slot } from "@/lib/types";
 
-/** Pixels per minute: one hour is 72px tall, enough for a name, time and count. */
-const PX_PER_MINUTE = 1.2;
+/** Pixels per minute: one hour is 84px tall, enough for a name, time and count. */
+const PX_PER_MINUTE = 1.4;
+/** Height of a stretch of the day with no classes, drawn collapsed. */
+const BREAK_PX = 40;
+/** Hours with nothing in them are only collapsed when there are this many minutes of them. */
+const MIN_BREAK = 120;
+
+type Band = { from: number; to: number };
+
+/**
+ * The parts of the day that have classes, in whole hours. A studio with a
+ * 7am class and evening classes would otherwise show eight empty hours in
+ * the middle; those are drawn as one short strip instead.
+ */
+function bandsOf(items: { slot: Slot }[]): Band[] {
+  const spans = items
+    .map((i) => ({ from: Math.floor(minutesOf(i.slot.starts_at) / 60) * 60, to: Math.ceil(minutesOf(i.slot.ends_at) / 60) * 60 }))
+    .sort((a, b) => a.from - b.from);
+  const bands: Band[] = [];
+  for (const s of spans) {
+    const last = bands[bands.length - 1];
+    if (last && s.from - last.to < MIN_BREAK) last.to = Math.max(last.to, s.to);
+    else bands.push({ ...s });
+  }
+  return bands;
+}
+
+/** Where a time of day sits, in pixels from the top, with breaks collapsed. */
+function yOf(bands: Band[], minute: number): number {
+  let y = 0;
+  for (const b of bands) {
+    if (minute <= b.to) return y + (Math.max(minute, b.from) - b.from) * PX_PER_MINUTE;
+    y += (b.to - b.from) * PX_PER_MINUTE + BREAK_PX;
+  }
+  return y - BREAK_PX;
+}
+
+const clock = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:00`;
 
 type Placed = { batch: BatchSummary; slot: Slot; start: number; end: number; lane: number; lanes: number };
 
@@ -78,13 +114,9 @@ export function Timetable({
   showBranch: boolean;
 }) {
   const items = batches.flatMap((batch) => batch.slots.map((slot) => ({ batch, slot })));
-  const first = Math.min(...items.map((i) => minutesOf(i.slot.starts_at)));
-  const last = Math.max(...items.map((i) => minutesOf(i.slot.ends_at)));
-  // Whole hours around the classes, at least three of them.
-  const top = Math.floor(first / 60) * 60;
-  const bottom = Math.max(top + 180, Math.ceil(last / 60) * 60);
-  const height = (bottom - top) * PX_PER_MINUTE;
-  const hours = Array.from({ length: (bottom - top) / 60 + 1 }, (_, i) => top + i * 60);
+  const bands = bandsOf(items);
+  const height = yOf(bands, bands[bands.length - 1].to);
+  const hours = bands.flatMap((band) => Array.from({ length: (band.to - band.from) / 60 + 1 }, (_, i) => band.from + i * 60));
   const days = [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({
     weekday,
     placed: placeDay(items.filter((i) => i.slot.weekday === weekday)),
@@ -92,7 +124,7 @@ export function Timetable({
 
   return (
     <>
-      <div className="timetable" style={{ ["--hour" as string]: `${60 * PX_PER_MINUTE}px` }}>
+      <div className="timetable">
         <span aria-hidden="true" />
         {days.map((d) => (
           <div key={d.weekday} className="tt-head" data-today={d.weekday === todayWeekday ? "" : undefined} aria-hidden="true">
@@ -102,8 +134,20 @@ export function Timetable({
 
         <div className="tt-axis" style={{ height }} aria-hidden="true">
           {hours.map((m) => (
-            <span key={m} style={{ top: (m - top) * PX_PER_MINUTE }}>
-              {String(Math.floor(m / 60)).padStart(2, "0")}:00
+            <span key={m} style={{ top: yOf(bands, m) }}>
+              {clock(m)}
+            </span>
+          ))}
+        </div>
+
+        {/* Hour lines and collapsed breaks, drawn once behind all seven days. */}
+        <div className="tt-lines" style={{ height }} aria-hidden="true">
+          {hours.map((m) => (
+            <i key={m} style={{ top: yOf(bands, m) }} />
+          ))}
+          {bands.slice(0, -1).map((band, i) => (
+            <span key={band.to} style={{ top: yOf(bands, band.to) + 4, height: BREAK_PX - 8 }}>
+              No classes {clock(band.to)} to {clock(bands[i + 1].from)}
             </span>
           ))}
         </div>
@@ -112,14 +156,15 @@ export function Timetable({
           <ul
             key={d.weekday}
             className="tt-col"
-            style={{ height }}
+            style={{ height, gridColumn: d.weekday + 1 }}
             aria-label={`${WEEKDAY_LONG[d.weekday - 1]}${d.weekday === todayWeekday ? ", today" : ""}`}
             data-today={d.weekday === todayWeekday ? "" : undefined}
           >
             {d.placed.map((p) => {
               const f = fullness(p.batch);
               const mine = p.batch.instructor_id === myStaffId;
-              const where = [showBranch ? p.batch.branch_name : null, p.batch.room_name].filter(Boolean).join(" · ");
+              // One short word for where: the branch when all branches are showing, the room otherwise.
+              const place = showBranch ? p.batch.branch_name : p.batch.room_name;
               return (
                 <li key={`${p.batch.id}-${p.slot.weekday}-${p.slot.starts_at}`}>
                   <TravelLink
@@ -132,8 +177,9 @@ export function Timetable({
                     data-mine={mine ? "" : undefined}
                     aria-label={accessibleName(p.batch, p.slot, showBranch, mine)}
                     title={accessibleName(p.batch, p.slot, showBranch, mine)}
+                    data-lanes={p.lanes > 2 ? "many" : p.lanes > 1 ? "two" : undefined}
                     style={{
-                      top: (p.start - top) * PX_PER_MINUTE + 1,
+                      top: yOf(bands, p.start) + 1,
                       height: (p.end - p.start) * PX_PER_MINUTE - 3,
                       left: `calc(${(p.lane / p.lanes) * 100}% + 2px)`,
                       width: `calc(${100 / p.lanes}% - 4px)`,
@@ -142,14 +188,19 @@ export function Timetable({
                     {p.batch.capacity !== null ? (
                       <span className="tt-fill" style={{ height: `${f.ratio * 100}%` }} aria-hidden="true" />
                     ) : null}
+                    {/* Most important first: a line that doesn't fit the
+                        block's height is left out whole, never cut through. */}
+                    <span className="tt-meta tt-time">
+                      {p.slot.starts_at}
+                      {p.lanes > 1 ? null : <span className="tt-end">–{p.slot.ends_at}</span>}
+                    </span>
                     <span className="tt-name">{p.batch.name}</span>
-                    <span className="tt-meta">
-                      {p.slot.starts_at}–{p.slot.ends_at}
-                    </span>
-                    <span className="tt-meta">
-                      {f.full ? "Full" : f.label}
-                      {mine ? " · You teach" : where ? ` · ${where}` : ""}
-                    </span>
+                    {p.lanes > 2 ? null : (
+                      <span className="tt-meta">
+                        {f.full ? "Full" : p.lanes > 1 && p.batch.capacity !== null ? `${p.batch.enrolled}/${p.batch.capacity}` : f.label}
+                      </span>
+                    )}
+                    {p.lanes > 1 || !(mine || place) ? null : <span className="tt-meta tt-where">{mine ? "You teach" : place}</span>}
                   </TravelLink>
                 </li>
               );

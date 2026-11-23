@@ -85,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
         if history(&pool, org.id, me).await? {
             println!("Added four weeks of attendance and this month's payments, so the graphs have something to show.");
         }
+        entered_when_they_joined(&pool, org.id).await?;
         return Ok(());
     }
 
@@ -418,6 +419,7 @@ async fn main() -> anyhow::Result<()> {
     .await?;
     tx.commit().await?;
     history(&pool, org.id, me).await?;
+    entered_when_they_joined(&pool, org.id).await?;
 
     println!(
         "Created Rhythm House: 3 branches, 10 classes, {} students, four weeks of history.",
@@ -454,6 +456,34 @@ fn dice(id: Uuid, salt: i64) -> i64 {
 /// today has been marked. The backdating below uses plain SQL where the
 /// app has no "change the past" feature; that's acceptable here because
 /// this binary refuses to run outside local development.
+/// `history` moves the demo students' joining dates into the past, which
+/// made every one of them look "Backdated" (typed in later than they
+/// joined). A studio that had really been running would have entered them
+/// on the day, so say so. Only the seeded people are touched (their
+/// contacts use the made-up +91 60001 numbers); anyone you add yourself
+/// keeps their real entry date. Safe to run again.
+async fn entered_when_they_joined(pool: &sqlx::PgPool, org_id: Uuid) -> anyhow::Result<()> {
+    let mut tx = TenantTx::begin(pool, org_id).await?;
+    const SEEDED: &str = "EXISTS (SELECT 1 FROM student_contacts sc
+                                    JOIN contacts c ON c.org_id = sc.org_id AND c.id = sc.contact_id
+                                   WHERE sc.student_id = s.id AND c.phone LIKE '+9160001%')";
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "UPDATE students s SET created_at = s.joined_on::timestamp + interval '12 hours'
+          WHERE studio_date(s.org_id, s.created_at) > s.joined_on AND {SEEDED}"
+    )))
+    .execute(tx.conn())
+    .await?;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "UPDATE enrollments e SET created_at = e.starts_on::timestamp + interval '12 hours'
+           FROM students s
+          WHERE s.id = e.student_id AND studio_date(e.org_id, e.created_at) > e.starts_on AND {SEEDED}"
+    )))
+    .execute(tx.conn())
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 async fn history(pool: &sqlx::PgPool, org_id: Uuid, me: Actor) -> anyhow::Result<bool> {
     let mut tx = TenantTx::begin(pool, org_id).await?;
     let today = tx.studio_today().await?;

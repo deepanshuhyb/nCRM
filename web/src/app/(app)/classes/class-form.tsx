@@ -99,9 +99,14 @@ export function ClassForm({
 
   async function save(active: boolean) {
     setError(null);
-    if (!name.trim()) return setError("Give the class a name.");
-    if (!branchId) return setError("Choose the branch.");
-    if (capacity.trim() && !/^\d+$/.test(capacity.trim())) return setError("Capacity is a whole number.");
+    // Bring the field that needs fixing into view: the form is longer than a phone screen.
+    const fix = (id: string, message: string) => {
+      document.getElementById(id)?.focus();
+      setError(message);
+    };
+    if (!name.trim()) return fix("class-name", "Give the class a name.");
+    if (!branchId) return fix("class-branch", "Choose the branch.");
+    if (capacity.trim() && !/^\d+$/.test(capacity.trim())) return fix("class-capacity", "Capacity is a whole number.");
     if (active && slots().length === 0) return setError("Pick at least one day.");
     setBusy(true);
     try {

@@ -25,7 +25,10 @@ export function NewStudentForm({ branches, today }: { branches: { id: string; na
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) return setError("Add the student's name.");
+    if (!name.trim()) {
+      document.getElementById("student-name")?.focus();
+      return setError("Add the student's name.");
+    }
     const filled = contacts.filter((c) => c.name.trim() || c.phone.trim());
     if (filled.some((c) => !c.name.trim() || !c.phone.trim())) {
       return setError("Each contact needs a name and a number.");

@@ -115,7 +115,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/atten
       {branches.length > 1 ? (
         <nav aria-label="Branch" className="segmented self-start">
           <Link href={href({ branch: null })} aria-current={!branch ? "page" : undefined}>
-            All branches
+            All<span className="max-sm:hidden">&nbsp;branches</span>
           </Link>
           {branches
             .filter((b) => b.active)
@@ -178,7 +178,7 @@ export default async function AttendancePage({ searchParams }: PageProps<"/atten
                   <li key={`${s.student_id}-${s.batch_id}`} className="row flex items-center justify-between gap-3 p-3">
                     <span className="min-w-0">
                       {studio.capabilities.includes("manage_students") ? (
-                        <Link href={`/students/${s.student_id}`} className="block font-bold">
+                        <Link href={`/students/${s.student_id}`} className="stretch block font-bold">
                           {s.student_name}
                         </Link>
                       ) : (

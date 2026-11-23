@@ -110,26 +110,32 @@ export default async function StudentsPage({ searchParams }: PageProps<"/student
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
             {page.items.map((s) => (
               <li key={s.id}>
-                <TravelLink kind="student" id={s.id} label={s.name} href={`/students/${s.id}`} className="row list-row">
-                  <span className="min-w-[180px] flex-[2_1_220px]">
-                    <Travels kind="student" id={s.id}>
-                      <span className="list-row-title inline-block">{s.name}</span>
-                    </Travels>
-                    <span className="caption block">{s.branch_name ?? "No branch set"}</span>
-                  </span>
-                  <span className="min-w-[180px] flex-[2_1_220px] text-sm">
+                <TravelLink
+                  kind="student"
+                  id={s.id}
+                  label={s.name}
+                  href={`/students/${s.id}`}
+                  className="row grid min-h-[56px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 px-3.5 py-2.5 no-underline sm:grid-cols-[minmax(0,5fr)_minmax(0,5fr)_minmax(0,3fr)_auto]"
+                >
+                  <Travels kind="student" id={s.id}>
+                    <span className="truncate font-bold">{s.name}</span>
+                  </Travels>
+                  <span className="caption order-3 col-span-2 truncate sm:order-none sm:col-span-1">
                     {s.primary_contact_name ? (
                       <>
-                        <span className="block font-semibold">{s.primary_contact_name}</span>
-                        <span className="muted">{s.primary_contact_phone ? formatPhone(s.primary_contact_phone) : ""}</span>
+                        {s.primary_contact_name}
+                        {s.primary_contact_phone ? ` · ${formatPhone(s.primary_contact_phone)}` : ""}
                       </>
                     ) : (
                       <span className="attn-text font-semibold">No contact yet</span>
                     )}
                   </span>
-                  <span className={s.status === "active" ? "tag tag-good" : s.status === "paused" ? "tag tag-quiet" : "tag tag-attn"}>
-                    {STATUS_LABEL[s.status]}
-                  </span>
+                  <span className="caption hidden truncate sm:block">{s.branch_name ?? "No branch"}</span>
+                  {s.status !== "active" || status === "all" ? (
+                    <span className={s.status === "active" ? "tag tag-good" : s.status === "paused" ? "tag tag-quiet" : "tag tag-attn"}>{STATUS_LABEL[s.status]}</span>
+                  ) : (
+                    <span />
+                  )}
                 </TravelLink>
               </li>
             ))}

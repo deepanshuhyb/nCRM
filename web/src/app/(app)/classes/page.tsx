@@ -65,7 +65,7 @@ export default async function ClassesPage({ searchParams }: PageProps<"/classes"
       {branches.length > 1 ? (
         <nav aria-label="Branch" className="segmented self-start">
           <Link href={href({ branch: null })} aria-current={!branch ? "page" : undefined}>
-            All branches
+            All<span className="max-sm:hidden">&nbsp;branches</span>
           </Link>
           {branches
             .filter((b) => b.active)

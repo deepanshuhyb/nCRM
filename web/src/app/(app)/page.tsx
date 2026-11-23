@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { Bars, Flow, Meter, Ranked, type Bar } from "@/components/graphs";
 import { Icon } from "@/components/icons";
-import { Counts, EmptyState, Page, PageHeader, SectionHeader, Stat } from "@/components/ui";
+import { EmptyState, Page, PageHeader, SectionHeader, Stat } from "@/components/ui";
 import {
   getAttendanceAlerts,
   getAttendanceReport,
@@ -148,7 +148,6 @@ export default async function HomePage() {
   const n = summary.classes_today;
   return (
     <>
-      <Counts />
       <Page>
         <PageHeader
           title={n === 0 ? "No classes today" : `${n} ${n === 1 ? "class" : "classes"} today`}
@@ -228,7 +227,10 @@ export default async function HomePage() {
           <section aria-labelledby="needs-title" className="panel flex flex-col gap-3 p-5 sm:p-6">
             <SectionHeader id="needs-title" title="Needs you" aside={needs.length > 0 ? String(needs.length) : undefined} />
             {needs.length === 0 ? (
-              <EmptyState title="Nothing right now">Classes are marked, nobody is slipping and no fee is overdue.</EmptyState>
+              <EmptyState title="Nothing right now">
+                {/* Only people who can see fees are told about fees. */}
+                {can.has("manage_fees") ? "Classes are marked, nobody is slipping and no fee is overdue." : "Classes are marked and nobody is missing class after class."}
+              </EmptyState>
             ) : (
               <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
                 {needs.map((item) => (

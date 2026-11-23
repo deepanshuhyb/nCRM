@@ -117,7 +117,7 @@ export function MarkSheet({
           const status = statusOf(r);
           const note = creditNote(r, status);
           return (
-            <li key={r.student_id} className="row flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <li key={r.student_id} className="row flex flex-col gap-1.5 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
               <span className="min-w-0">
                 <span className="block font-bold">
                   {r.student_name}
@@ -302,15 +302,15 @@ export function TeacherCheckIn({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 p-1.5">
-      <span className="min-w-0">
-        <span className="muted block text-[13px]">Teacher</span>
+    <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2.5">
+      <span className="min-w-0 flex-[1_1_180px]">
+        <span className="caption block">Teacher</span>
         {canMarkAny && team.length > 0 ? (
           <>
             <label htmlFor="session-teacher" className="sr-only">
               Who taught
             </label>
-            <select id="session-teacher" className="select" value={who} onChange={(e) => setWho(e.target.value)}>
+            <select id="session-teacher" className="select w-full sm:w-auto" value={who} onChange={(e) => setWho(e.target.value)}>
               <option value="">Not decided</option>
               {team.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -323,14 +323,26 @@ export function TeacherCheckIn({
           <span className="font-bold">{instructorName ?? "Not decided"}</span>
         )}
       </span>
-      <span className="flex flex-wrap items-center gap-2">
-        {present === null ? null : <span className={present ? "tag tag-good" : "tag tag-attn"}>{present ? "Was here" : "Was absent"}</span>}
-        <button type="button" className={present === true ? "btn btn-ghost" : "btn btn-primary"} disabled={busy} onClick={() => mark(true)}>
+      {/* One control with two answers; the chosen one is filled in. */}
+      <span className="flex flex-[1_1_220px] items-center gap-2 sm:flex-none" role="group" aria-label="Was the teacher here">
+        <button
+          type="button"
+          className={`btn flex-1 sm:flex-none ${present === true ? "btn-primary" : "btn-ghost"}`}
+          aria-pressed={present === true}
+          disabled={busy}
+          onClick={() => mark(true)}
+        >
           {canMarkAny ? "Teacher was here" : "I'm here"}
         </button>
         {canMarkAny ? (
-          <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => mark(false)}>
-            Teacher was absent
+          <button
+            type="button"
+            className={`btn flex-1 sm:flex-none ${present === false ? "btn-dark" : "btn-ghost"}`}
+            aria-pressed={present === false}
+            disabled={busy}
+            onClick={() => mark(false)}
+          >
+            Was absent
           </button>
         ) : null}
       </span>

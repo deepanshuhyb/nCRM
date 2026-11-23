@@ -64,10 +64,12 @@ export function RoomsEditor({ branchId, branchName, rooms, canManage }: { branch
         </ul>
       )}
       {canManage ? (
-        <form onSubmit={add} noValidate className="flex flex-wrap items-end gap-2">
+        <details className="disclosure row" open={rooms.length === 0 ? true : undefined}>
+          <summary className="flex min-h-[48px] items-center px-3.5 text-sm font-semibold">Add a room</summary>
+          <form onSubmit={add} noValidate className="flex flex-wrap items-end gap-2 px-3.5 pb-3.5">
           <div className="min-w-[140px] flex-[2_1_160px]">
             <label htmlFor={`room-name-${branchId}`} className="field-label">
-              New room
+              Room name
             </label>
             <input
               id={`room-name-${branchId}`}
@@ -99,7 +101,8 @@ export function RoomsEditor({ branchId, branchName, rooms, canManage }: { branch
           <p role="alert" className="field-error m-0 w-full empty:hidden">
             {error}
           </p>
-        </form>
+          </form>
+        </details>
       ) : null}
     </div>
   );

@@ -61,7 +61,7 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
   const marks = [...attendance.recent].reverse();
   const markedTotal = attendance.came + attendance.missed;
   const tabs = [
-    { id: "classes", label: "Classes", badge: current.length > 0 ? <span className="tag tag-quiet">{current.length}</span> : undefined },
+    { id: "classes", label: "Classes", badge: current.length > 0 ? <span className="tag tag-quiet hidden sm:inline-flex">{current.length}</span> : undefined },
     ...(fees
       ? [
           {
@@ -97,25 +97,22 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
           ) : (
             <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
               {current.map((e) => (
-                <li key={e.id} className="row flex flex-wrap items-center justify-between gap-2 p-3.5">
-                  <span className="min-w-0">
-                    <Link href={`/classes/${e.batch_id}`} className="block font-bold">
+                <li key={e.id} className="row px-3.5 pt-1 pb-2.5">
+                  {/* Name and action share the first line; the details get the full width below. */}
+                  <div className="flex flex-wrap items-center justify-between gap-x-2">
+                    <Link href={`/classes/${e.batch_id}`} className="stretch min-w-0 font-bold">
                       {e.batch_name}
                     </Link>
-                    <span className="muted text-[13px]">
-                      {scheduleSummary(e.slots)}, {e.branch_name}
-                    </span>
-                    <span className="soft block text-[13px]">
-                      {e.plan_name && e.plan_price_paise !== null
-                        ? `${e.plan_name}, ${formatRupees(e.plan_price_paise)} a month`
-                        : "Pays with class credits"}
-                      {e.starts_on > summary.today ? `, starts ${formatDate(e.starts_on)}` : `, since ${formatDate(e.starts_on)}`}
-                    </span>
-                    <span className="mt-1 inline-flex">
-                      <BackdatedPill date={e.starts_on} enteredOn={e.entered_on} />
-                    </span>
+                    <TakeOutButton enrollmentId={e.id} name={student.name} />
+                  </div>
+                  <span className="caption -mt-1 block">
+                    {scheduleSummary(e.slots)} · {e.branch_name}
                   </span>
-                  <TakeOutButton enrollmentId={e.id} name={student.name} />
+                  <span className="caption flex flex-wrap items-center gap-x-1.5">
+                    {e.plan_name && e.plan_price_paise !== null ? `${formatRupees(e.plan_price_paise)} a month` : "Pays with class credits"}
+                    {e.starts_on > summary.today ? ` · starts ${short(e.starts_on)}` : ` · since ${short(e.starts_on)}`}
+                    <BackdatedPill date={e.starts_on} enteredOn={e.entered_on} />
+                  </span>
                 </li>
               ))}
             </ul>
@@ -261,7 +258,7 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
                     {fees.payments.slice(0, 12).map((p) => (
                       <li key={p.id} className="row flex flex-wrap items-center justify-between gap-x-3 gap-y-1 p-3">
                         <span className="min-w-0 flex-1">
-                          <Link href={`/fees/receipts/${p.id}`} className="block font-semibold">
+                          <Link href={`/fees/receipts/${p.id}`} className="stretch block font-semibold">
                             Receipt {p.receipt_no}
                           </Link>
                           <span className="muted text-[13px]">
@@ -395,7 +392,7 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
         <span className={statusClass}>{STATUS_LABEL[student.status]}</span>
       </PageHeader>
 
-      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-3">
+      <div className={`grid gap-2.5 sm:gap-[18px] ${fees ? "grid-cols-3" : "grid-cols-2"}`}>
         {fees ? (
           <Stat
             label="Fees"
@@ -405,15 +402,15 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
           />
         ) : null}
         <Stat
-          label="Attendance, last 30 days"
+          label="Attendance"
           value={markedTotal === 0 ? "–" : formatPercent(attendance.came / markedTotal)}
-          note={markedTotal === 0 ? "Nothing marked yet" : `Came to ${attendance.came} of ${markedTotal}`}
+          note={markedTotal === 0 ? "Nothing marked" : `${attendance.came} of ${markedTotal} in 30 days`}
           tone={attendance.missed >= 3 && attendance.missed > attendance.came ? "attn" : undefined}
         />
         <Stat
           label="Classes"
           value={current.length}
-          note={credits.available > 0 ? `${credits.available} class ${credits.available === 1 ? "credit" : "credits"} to use` : current.length === 0 ? "Not in a class yet" : "No class credits"}
+          note={credits.available > 0 ? `${credits.available} ${credits.available === 1 ? "credit" : "credits"} left` : current.length === 0 ? "Not in one yet" : "No credits"}
         />
       </div>
 

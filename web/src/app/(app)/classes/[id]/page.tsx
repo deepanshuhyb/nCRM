@@ -153,25 +153,23 @@ export default async function ClassPage({ params }: PageProps<"/classes/[id]">) 
           ) : (
             <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
               {batch.roster.map((r) => (
-                <li key={r.enrollment_id} className="row flex items-center justify-between gap-2 px-3.5 py-2.5">
-                  <span className="min-w-0">
+                <li key={r.enrollment_id} className={`row px-3.5 pb-2.5 ${manageStudents ? "pt-1" : "pt-2.5"}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-x-2">
                     {manageStudents ? (
-                      <Link href={`/students/${r.student_id}`} className="block font-bold">
+                      <Link href={`/students/${r.student_id}`} className="stretch min-w-0 font-bold">
                         {r.student_name}
                       </Link>
                     ) : (
-                      <span className="block font-bold">{r.student_name}</span>
+                      <span className="min-w-0 font-bold">{r.student_name}</span>
                     )}
-                    <span className="muted text-[13px]">
-                      {r.plan_name ?? "Pays with class credits"}
-                      {r.starts_on > summary.today ? `, starts ${formatDate(r.starts_on)}` : `, since ${formatDate(r.starts_on)}`}
-                      {r.student_status !== "active" ? `, ${STATUS_LABEL[r.student_status].toLowerCase()}` : ""}
-                    </span>
-                    <span className="mt-1 inline-flex">
-                      <BackdatedPill date={r.starts_on} enteredOn={r.entered_on} />
-                    </span>
+                    {manageStudents ? <TakeOutButton enrollmentId={r.enrollment_id} name={r.student_name} /> : null}
+                  </div>
+                  <span className={`caption flex flex-wrap items-center gap-x-1.5 ${manageStudents ? "-mt-1" : ""}`}>
+                    {r.plan_name ?? "Pays with class credits"}
+                    {r.starts_on > summary.today ? ` · starts ${formatDate(r.starts_on)}` : ` · since ${formatDate(r.starts_on)}`}
+                    {r.student_status !== "active" ? ` · ${STATUS_LABEL[r.student_status].toLowerCase()}` : ""}
+                    <BackdatedPill date={r.starts_on} enteredOn={r.entered_on} />
                   </span>
-                  {manageStudents ? <TakeOutButton enrollmentId={r.enrollment_id} name={r.student_name} /> : null}
                 </li>
               ))}
             </ul>

@@ -16,6 +16,141 @@ Template:
 
 ---
 
+## 2026-11-23: A "visually hidden" table still took up space
+
+**Context:** the UI audit (`docs/UI_AUDIT.md`) found Home scrolling
+sideways: 562px of page in a 390px window, and it happened on a 1400px
+desktop too.
+
+**What wasn't obvious:** nothing visible was too wide. Every graph carries
+a table of its numbers for screen readers, hidden with the usual
+`sr-only` class (1px by 1px, `overflow: hidden`, clipped). That recipe
+works on a `<span>` or a `<div>`. A `<table>` ignores it: a table is as
+wide as its cells need, whatever `width` says, and `overflow` doesn't
+apply to it. So an invisible 28-row table was laid out at full size,
+positioned absolutely, sticking out past the right edge, and the page grew
+to contain it.
+
+**What we did:** `Numbers` in `components/graphs.tsx` wraps the table in a
+`<div className="sr-only">`. The div obeys the recipe and clips the table
+inside it. Screen readers still read the table.
+
+**Consequences:** never put `sr-only` directly on a `<table>` (or on
+anything with `display: table`, `grid` or `flex` children that refuse to
+shrink). Wrap it. `scripts/ui-audit/audit.py` checks every screen for
+sideways scroll; run it after changing a layout.
+
+## 2026-11-23: Tabs forgot themselves after a save
+
+**Context:** the student profile's tabs remember the open tab in the
+address (`/students/…#fees`), so a reload or a shared link lands on the
+same tab. Walking the payment flow on a phone showed the page jumping back
+to the first tab the moment a payment was saved, hiding the receipt it had
+just produced.
+
+**What wasn't obvious:** choosing a tab called
+`history.replaceState(history.state, "", "#fees")`. Passing the current
+state back looks like the careful thing to do. But Next.js keeps its own
+bookkeeping in that state object, and it wraps `replaceState`: when the
+state it is handed is *its own*, it assumes the call came from itself and
+does not update what it believes the address is. The browser showed
+`#fees`; the router still thought there was no fragment. The next
+`router.refresh()` (which every save does, to show fresh numbers) put the
+router's version of the address back, and the fragment was gone.
+
+**What we did:** `components/tabs.tsx` now passes `null`:
+`history.replaceState(null, "", "#fees")`. This is the form the Next.js
+docs use. Next copies its own bookkeeping into the new state and records
+the new address, so a refresh keeps it.
+
+**Consequences:** anywhere we change the address by hand, pass `null` as
+the state, never `history.state`. The phone walk-through
+(`scripts/ui-audit/flows.py`) fails if the Fees tab isn't still open
+after a payment.
+
+## 2026-11-23: The timetable drops whole lines instead of cutting them
+
+**Context:** timetable blocks are sized by time: an hour-long class is a
+fixed height, and its width is a seventh of the panel (less when classes
+share an hour). The text often didn't fit, and was cut off mid-word or
+sliced through the middle of a line.
+
+**What wasn't obvious:**
+- The server draws the timetable with no JavaScript, so it can't measure
+  what fits. Whatever happens has to be plain CSS.
+- CSS has no "hide this line if there's no room". `overflow: hidden` cuts
+  wherever the box ends, including through the middle of a line of text.
+- Most of the grid was empty. A 7am class plus evening classes meant
+  eight blank hours, and the hours with classes got 72px each.
+
+**What we did:**
+- **Empty hours collapse.** `bandsOf` in `components/timetable.tsx` finds
+  the stretches of the day that have classes (in whole hours, across the
+  whole week), and `yOf` turns a time into a pixel position with each gap
+  of two hours or more drawn as one 40px strip labelled with the hours it
+  skips. Hour lines moved from a repeating background (which assumes
+  evenly spaced hours) to real elements, one per hour.
+- **Lines drop out whole.** Each block is a column flex container with
+  `flex-wrap: wrap`. When its lines are taller than the block, the ones
+  that don't fit wrap into a *second column*, and that column is outside
+  the block, where `overflow: hidden` removes it. The lines are in order
+  of importance (time, name, how full, where), so the least important
+  goes first, and no line is ever sliced.
+- **Width** is handled with container queries on the day column: under
+  128px the place is dropped, under 104px the end time.
+- Side-by-side blocks open to the full width of the day on hover or
+  keyboard focus.
+
+**Consequences:** to add a line to a block, put it where it ranks; the
+last child is the first to disappear. The 40px column gap in `.tt-block`
+is what keeps the wrapped column fully outside the padding box, so don't
+remove it. A studio with no gap of two hours sees the grid exactly as
+before, only taller.
+
+## 2026-11-23: Rows that are tappable anywhere, with buttons inside
+
+**Context:** on a phone, names inside rows were links 23px tall: easy to
+miss. Making the whole row a link is the usual answer, but several rows
+also hold a button ("Take out", "Cancel").
+
+**What wasn't obvious:** a `<button>` inside an `<a>` is invalid HTML and
+confuses screen readers and keyboards, so the row can't simply become the
+link.
+
+**What we did:** the name stays the only link, with the class `stretch`.
+Its `::after` is an invisible layer covering the whole row
+(`position: absolute; inset: 0` inside the row, which is
+`position: relative`). The row's buttons and form controls get
+`position: relative; z-index: 1`, so they sit above that layer and still
+work. One link, one accessible name, a 44px+ target.
+
+**Consequences:** text in such a row can't be selected by dragging (the
+link's layer is on top). Any new control added to a stretched row is
+lifted automatically if it's a button, select, input or form; anything
+else needs the same two declarations.
+
+## 2026-11-23: Every demo student said "Backdated"
+
+**Context:** a joining date earlier than the day it was typed in gets a
+"Backdated" pill, so nobody mistakes an old date for a typo. On the demo
+studio every student and every class place had one, which read as clutter
+and hid the pill's meaning.
+
+**What wasn't obvious:** the pill was right. The demo seeder creates
+people today and then moves their joining dates months into the past to
+give the graphs some history. That is exactly what backdating is.
+
+**What we did:** `entered_when_they_joined` in `ncrm-dev-seed` also moves
+the *entered* time (`created_at`) of seeded students and their class
+places back to the joining date. It only touches people whose contact has
+one of the seeder's made-up `+91 60001…` numbers, and it runs on every
+seed, so an existing demo studio is tidied the next time the dev script is
+run with a phone number.
+
+**Consequences:** this is demo data only; the product's behaviour is
+unchanged. Someone you add yourself with an old joining date still shows
+"Backdated", as intended.
+
 ## 2026-11-23: Sign-in codes over WhatsApp
 
 **Context:** until now sign-in codes could only be printed in the API's

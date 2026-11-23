@@ -6,7 +6,7 @@ import { Bars, Meter, Ranked } from "@/components/graphs";
 import { TravelLink, Travels } from "@/components/travel";
 import { Page, PageHeader } from "@/components/ui";
 import { getFeesReport, getFeesSummary, getMe, getSummary, listBranches, listDues, listPayments } from "@/lib/api-server";
-import { addDays, formatDate, formatDay, formatDayShort, formatPercent, formatRupees } from "@/lib/format";
+import { addDays, formatDay, formatDayShort, formatPercent, formatRupees } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/types";
 
 import { MonthlyFeesSetup } from "./fee-settings";
@@ -154,6 +154,7 @@ export default async function FeesPage({ searchParams }: PageProps<"/fees">) {
               {dues.total === 0 ? "Nobody owes anything" : `${dues.total} ${dues.total === 1 ? "student owes" : "students owe"}`}
               {branch ? ` at ${branch.name}` : ""}
             </h2>
+            {dues.total > 0 ? <p className="caption m-0 w-full">Most overdue first. Tap a student to take a payment.</p> : null}
             {branches.length > 1 ? (
               <nav aria-label="Branch" className="segmented">
                 <Link href={href({ branch: null })} aria-current={!branch ? "page" : undefined}>
@@ -176,26 +177,25 @@ export default async function FeesPage({ searchParams }: PageProps<"/fees">) {
           ) : (
             <ul className="m-0 flex list-none flex-col gap-1.5 p-0" data-live>
               {dues.items.map((d) => (
-                <li key={d.student_id} className="row flex flex-wrap items-center justify-between gap-3 p-3">
-                  <span className="min-w-0 flex-1">
-                    <TravelLink kind="student" id={d.student_id} label={d.student_name} href={`/students/${d.student_id}#fees`} className="block font-bold">
+                <li key={d.student_id}>
+                  <TravelLink
+                    kind="student"
+                    id={d.student_id}
+                    label={d.student_name}
+                    href={`/students/${d.student_id}#fees`}
+                    className="row flex min-h-[60px] items-center justify-between gap-3 px-3.5 py-2.5 no-underline"
+                  >
+                    <span className="min-w-0">
                       <Travels kind="student" id={d.student_id}>
-                        <span>{d.student_name}</span>
+                        <span className="block truncate font-bold">{d.student_name}</span>
                       </Travels>
-                    </TravelLink>
-                    <span className="muted text-[13px]">{d.branch_name ?? "No branch"}</span>
-                  </span>
-                  <span className="flex flex-col items-end">
-                    <span className="font-bold tabular-nums">{formatRupees(d.due_paise)}</span>
-                    {d.overdue_paise > 0 ? (
-                      <span className="attn-text text-[13px] font-semibold">Overdue since {formatDate(d.oldest_due_on).replace(/ \d{4}$/, "")}</span>
-                    ) : (
-                      <span className="muted text-[13px]">Due {formatDate(d.oldest_due_on).replace(/ \d{4}$/, "")}</span>
-                    )}
-                  </span>
-                  <Link href={`/students/${d.student_id}#fees`} className="btn btn-ghost">
-                    Take payment
-                  </Link>
+                      <span className={`block truncate text-[13px] ${d.overdue_paise > 0 ? "attn-text font-semibold" : "muted"}`}>
+                        {d.overdue_paise > 0 ? "Overdue since" : "Due"} {formatDayShort(d.oldest_due_on)}
+                        {d.branch_name ? ` · ${d.branch_name}` : ""}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-base font-bold tabular-nums">{formatRupees(d.due_paise)}</span>
+                  </TravelLink>
                 </li>
               ))}
             </ul>
