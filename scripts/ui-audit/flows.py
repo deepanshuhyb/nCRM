@@ -1,6 +1,6 @@
 """Walk the main jobs on a phone-sized screen as the demo manager and say which steps work:
 add a student (the empty form must complain first), put them in a class, take a
-payment and open the receipt, switch profile tabs, mark a class, add a class,
+payment and open the receipt, discount a fee, switch profile tabs, mark a class, add a class,
 search, add a room, open a team editor, answer a parent in the WhatsApp inbox,
 switch the bot off and on, message a class, switch fee reminders off and on, open and download a report, switch theme, sign out.
 
@@ -70,6 +70,27 @@ with sync_playwright() as p:
         link.click(); pg.wait_for_url(re.compile("/fees/receipts/")); shot("receipt")
         return pg.locator(".receipt").inner_text().replace("\n", " ")[:90]
     step("take a payment and open the receipt", pay)
+
+    def discount():
+        # A fee to discount: add one by hand, then take ₹100 off as the manager.
+        pg.goto(profile + "#fees", wait_until="networkidle")
+        pg.locator("summary", has_text="Add a charge").click()
+        pg.get_by_label("What it's for").fill("Costume")
+        pg.get_by_label("Amount (₹)").fill("900")
+        pg.get_by_role("button", name="Add charge").click()
+        pg.get_by_role("button", name="Discount Costume").wait_for(timeout=15000)
+        pg.get_by_role("button", name="Discount Costume").click()
+        pg.get_by_label("Take off (₹)").fill("100")
+        pg.get_by_role("button", name="Give discount").click()
+        expect(pg.get_by_text("Say why, for the record.")).to_be_visible()
+        pg.locator("ul[aria-label='Charges']").get_by_label("Why", exact=True).fill("Sibling")
+        pg.get_by_role("button", name="Give discount").click()
+        row = pg.locator("ul[aria-label='Charges'] li", has_text="Costume").first
+        expect(row).to_contain_text("₹100 off: Sibling", timeout=15000)
+        shot("discount")
+        assert pg.get_by_role("tab", selected=True).inner_text().strip().startswith("Fees")
+        return row.inner_text().replace("\n", " ")[:90]
+    step("discount a fee, with a reason", discount)
 
     def tabs():
         pg.goto(profile + "#details", wait_until="networkidle"); pg.wait_for_timeout(400); shot("details_tab")

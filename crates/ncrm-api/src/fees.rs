@@ -10,7 +10,7 @@ use axum::Json;
 use ncrm_core::access::Capability;
 use ncrm_core::db::TenantTx;
 use ncrm_core::fees::{
-    self, Dues, DuesQuery, FeeSettings, FeesSummary, NewCharge, NewPayment, Payments,
+    self, Discount, Dues, DuesQuery, FeeSettings, FeesSummary, NewCharge, NewPayment, Payments,
     PaymentsQuery, Receipt, StudentFees, Void,
 };
 
@@ -141,6 +141,21 @@ pub async fn add_charge(
     let fees = fees::add_charge(&mut tx, who.actor(), id, body).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(fees)))
+}
+
+/// `POST /charges/{id}/discount`: `{off_paise, reason}`.
+pub async fn discount_charge(
+    State(state): State<AppState>,
+    who: Staff,
+    Path(id): Path<String>,
+    Body(body): Body<Discount>,
+) -> Result<Json<StudentFees>, ApiError> {
+    who.require(Capability::AdjustFees)?;
+    let id = parse_id(&id)?;
+    let mut tx = TenantTx::begin(&state.pool, who.0.org_id).await?;
+    let fees = fees::discount_charge(&mut tx, who.actor(), id, body).await?;
+    tx.commit().await?;
+    Ok(Json(fees))
 }
 
 /// `POST /students/{id}/payments`: returns the receipt.

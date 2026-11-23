@@ -25,7 +25,7 @@ import { ATTENDANCE_LABEL, PAYMENT_METHOD_LABEL, RELATION_LABEL, STATUS_LABEL } 
 
 import { AdjustCredits, JoinClassForm, SellPackForm } from "./student-classes";
 import { AddContactForm, EditStudentForm, RemoveContactButton } from "./student-editors";
-import { AddChargeForm, CancelEntry, TakePaymentForm } from "./student-fees";
+import { AddChargeForm, CancelEntry, DiscountEntry, TakePaymentForm } from "./student-fees";
 
 export const metadata: Metadata = { title: "Student" };
 
@@ -227,24 +227,35 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
                   {fees.charges.slice(0, 12).map((c) => {
                     const left = c.amount_paise - c.paid_paise;
                     return (
-                      <li key={c.id} className="row flex flex-wrap items-center justify-between gap-x-3 gap-y-1 p-3">
-                        <span className="min-w-0 flex-1">
-                          <span className={`block font-semibold ${c.voided_at ? "muted line-through" : ""}`}>{c.description}</span>
-                          <span className="muted text-[13px]">
-                            {c.voided_at ? `Cancelled: ${c.void_reason}` : `Due ${short(c.due_on)}`}
-                          </span>
-                        </span>
-                        <span className="flex flex-col items-end">
-                          <span className={`font-bold tabular-nums ${c.voided_at ? "muted line-through" : ""}`}>{formatRupees(c.amount_paise)}</span>
-                          {c.voided_at ? null : left === 0 ? (
-                            <span className="tag tag-good">Paid</span>
-                          ) : (
-                            <span className={c.overdue ? "tag tag-attn" : "tag tag-quiet"}>
-                              {c.paid_paise > 0 ? `${formatRupees(left)} left` : c.overdue ? "Overdue" : "Not paid"}
+                      <li key={c.id} className="row flex flex-col gap-1 p-3">
+                        {/* What and how much on top; the actions get a line of
+                            their own, so they never squeeze the description. */}
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className={`block font-semibold ${c.voided_at ? "muted line-through" : ""}`}>{c.description}</span>
+                            <span className="muted block text-[13px]">
+                              {c.voided_at ? `Cancelled: ${c.void_reason}` : `Due ${short(c.due_on)}`}
+                              {!c.voided_at && c.discount_paise > 0 ? ` · ${formatRupees(c.discount_paise)} off: ${c.discount_reason}` : ""}
                             </span>
-                          )}
-                        </span>
-                        {canAdjust && !c.voided_at ? <CancelEntry kind="charge" id={c.id} label={c.description} /> : null}
+                          </span>
+                          <span className="flex shrink-0 flex-col items-end gap-0.5">
+                            <span className={`font-bold tabular-nums ${c.voided_at ? "muted line-through" : ""}`}>{formatRupees(c.amount_paise)}</span>
+                            {c.voided_at ? null : left === 0 ? (
+                              <span className="tag tag-good">Paid</span>
+                            ) : (
+                              <span className={c.overdue ? "tag tag-attn" : "tag tag-quiet"}>
+                                {c.paid_paise > 0 ? `${formatRupees(left)} left` : c.overdue ? "Overdue" : "Not paid"}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        {canAdjust && !c.voided_at ? (
+                          <div className="flex flex-wrap items-center justify-end gap-x-1">
+                            {/* Nothing left to take off once it is paid in full. */}
+                            {left > 0 ? <DiscountEntry id={c.id} label={c.description} leftPaise={left} /> : null}
+                            <CancelEntry kind="charge" id={c.id} label={c.description} />
+                          </div>
+                        ) : null}
                       </li>
                     );
                   })}

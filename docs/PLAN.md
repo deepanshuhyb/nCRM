@@ -76,7 +76,8 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [x] Monthly fees created on demand once the studio switches them on; packs become charges when sold
 - [x] Receipts with gapless numbers per studio, printable; dues list; the day's payments by method
 - [x] Cancelling a charge or payment: owners and managers only, with a reason, nothing deleted
-- [ ] Discounts and part waivers on a charge (today: cancel it and add a new one)
+- [x] Discounts on a charge: an amount off with a reason, by an owner or manager; the fee stays the same fee
+- [ ] A standing discount on a student or a price (today: applied fee by fee)
 - [ ] Earlier months for a studio that joins mid-year (today: added by hand as "old balance")
 - [ ] Razorpay payment links and automatic matching (needs the studio's keys)
 - [ ] Send the receipt on WhatsApp (after phase 3)

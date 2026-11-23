@@ -299,3 +299,73 @@ export function CancelEntry({ kind, id, label }: { kind: "charge" | "payment"; i
     </form>
   );
 }
+
+/** Take something off a fee: how much, and why. Owners and managers. */
+export function DiscountEntry({ id, label, leftPaise }: { id: string; label: string; leftPaise: number }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [rupees, setRupees] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const field = `discount-${id}`;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const off = parseRupees(rupees);
+    if (off === null || off <= 0) return setError("How much comes off, in rupees?");
+    if (off >= leftPaise) return setError(`There's ${formatRupees(leftPaise)} left to pay, so the discount has to be less. To drop it all, cancel the charge.`);
+    if (!reason.trim()) return setError("Say why, for the record.");
+    setError(null);
+    setBusy(true);
+    try {
+      await apiSend("POST", `/charges/${id}/discount`, { off_paise: off, reason: reason.trim() });
+      setOpen(false);
+      setRupees("");
+      setReason("");
+      router.refresh();
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn btn-quiet" onClick={() => setOpen(true)} aria-label={`Discount ${label}`}>
+        Discount
+      </button>
+    );
+  }
+  return (
+    <form onSubmit={submit} noValidate className="flex w-full flex-col gap-2 pt-1">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex-[1_1_110px]">
+          <label htmlFor={`${field}-off`} className="field-label">
+            Take off (₹)
+          </label>
+          <input id={`${field}-off`} className="field" inputMode="decimal" maxLength={10} value={rupees} placeholder="500" onChange={(e) => setRupees(e.target.value)} />
+        </div>
+        <div className="flex-[3_1_200px]">
+          <label htmlFor={`${field}-why`} className="field-label">
+            Why
+          </label>
+          <input id={`${field}-why`} className="field" maxLength={200} value={reason} placeholder="Sibling discount" onChange={(e) => setReason(e.target.value)} />
+        </div>
+      </div>
+      <p className="muted m-0 text-[13px]">The fee stays, with less to pay. It shows as a discount on their fees and can&apos;t be undone except by cancelling the fee.</p>
+      <p role="alert" className="field-error m-0 min-h-[1.2em]">
+        {error}
+      </p>
+      <div className="flex gap-2">
+        <button type="submit" className="btn btn-dark" disabled={busy}>
+          {busy ? "Saving…" : "Give discount"}
+        </button>
+        <button type="button" className="btn btn-quiet" onClick={() => setOpen(false)}>
+          Not now
+        </button>
+      </div>
+    </form>
+  );
+}

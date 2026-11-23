@@ -862,8 +862,16 @@ async fn the_database_itself_refuses_to_bend_the_books(pool: PgPool) {
 
     let attempts: Vec<(&str, String, &str)> = vec![
         (
+            // Since discounts, the app may lower an amount, but only by
+            // moving the difference onto the discount (see the discount
+            // test). Rewriting the amount on its own is still refused.
             "change an amount",
             format!("UPDATE charges SET amount_paise = 1 WHERE id = '{costume}'"),
+            "charges_original_is_fixed",
+        ),
+        (
+            "change what a charge is for",
+            format!("UPDATE charges SET description = 'Other' WHERE id = '{costume}'"),
             "permission denied",
         ),
         (
@@ -1084,4 +1092,109 @@ async fn another_studio_sees_no_fees(pool: PgPool) {
         .unwrap();
     assert_eq!(first.payment.receipt_no, 1);
     let _ = (alpha.pack, alpha.chirag, beta.free_pack);
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn a_discount_lowers_a_fee_within_the_rules(pool: PgPool) {
+    use ncrm_core::fees::Discount;
+    let w = world(&pool, "discount").await;
+    let other = world(&pool, "elsewhere").await;
+    let (owner, desk) = (actor(&w.owner), actor(&w.desk));
+    let off = |paise, reason: &str| Discount {
+        off_paise: paise,
+        reason: reason.into(),
+    };
+    let mut t = tx(&pool, &w).await;
+    let f = fees::add_charge(&mut t, desk, w.bela, charge("Term fee", 250_000, w.today))
+        .await
+        .unwrap();
+    let fee = f.charges[0].id;
+    // ₹1,000 is already paid towards it.
+    fees::record_payment(&mut t, desk, w.bela, pay(100_000, PaymentMethod::Cash))
+        .await
+        .unwrap();
+
+    // Front desk records money; it doesn't change what is owed.
+    assert!(matches!(
+        fees::discount_charge(&mut t, desk, fee, off(50_000, "Sibling")).await,
+        Err(Error::Forbidden)
+    ));
+    // No reason, nothing off, everything off, and more than is left to pay.
+    for bad in [
+        off(50_000, "  "),
+        off(0, "Sibling"),
+        off(250_000, "Sibling"),
+        off(200_000, "Sibling"),
+    ] {
+        let r = fees::discount_charge(&mut t, owner, fee, bad).await;
+        assert!(matches!(r, Err(Error::Invalid(_))));
+    }
+    let too_much = fees::discount_charge(&mut t, owner, fee, off(200_000, "Sibling")).await;
+    assert!(
+        matches!(&too_much, Err(Error::Invalid(m)) if m.contains("₹1,000 of this is already paid") && m.contains("₹1,500")),
+        "{too_much:?}"
+    );
+
+    // ₹500 off: ₹2,000 to pay in all, ₹1,000 of it paid.
+    let after = fees::discount_charge(&mut t, owner, fee, off(50_000, " Sibling "))
+        .await
+        .unwrap();
+    let c = after.charges.iter().find(|c| c.id == fee).unwrap();
+    assert_eq!(
+        (c.amount_paise, c.discount_paise, c.paid_paise),
+        (200_000, 50_000, 100_000)
+    );
+    assert_eq!(c.discount_reason.as_deref(), Some("Sibling"));
+    assert_eq!(after.due_paise, 100_000);
+    // A second one adds up and keeps both reasons.
+    let again = fees::discount_charge(&mut t, owner, fee, off(25_000, "Paid early"))
+        .await
+        .unwrap();
+    let c = again.charges.iter().find(|c| c.id == fee).unwrap();
+    assert_eq!((c.amount_paise, c.discount_paise), (175_000, 75_000));
+    assert_eq!(c.discount_reason.as_deref(), Some("Sibling; Paid early"));
+    assert_eq!(again.due_paise, 75_000);
+    t.commit().await.unwrap();
+
+    // The database holds the same line, whatever code asks: an amount
+    // can't go up, the price before discounts can't change, and it can't
+    // drop below what was paid.
+    for (sql, constraint) in [
+        (
+            "UPDATE charges SET amount_paise = amount_paise + 100, discount_paise = discount_paise - 100 WHERE id = $1",
+            "charges_discount_only_lowers",
+        ),
+        (
+            "UPDATE charges SET amount_paise = amount_paise - 100 WHERE id = $1",
+            "charges_original_is_fixed",
+        ),
+        (
+            "UPDATE charges SET amount_paise = 50000, discount_paise = 200000 WHERE id = $1",
+            "charges_discount_covers_paid",
+        ),
+    ] {
+        let mut t = tx(&pool, &w).await;
+        let refused = sqlx::query(sql).bind(fee).execute(t.conn()).await.unwrap_err();
+        assert_eq!(
+            refused.as_database_error().and_then(|e| e.constraint()),
+            Some(constraint),
+            "{sql}"
+        );
+    }
+
+    // A cancelled fee can't be discounted, and another studio's fee isn't there.
+    let mut t = tx(&pool, &w).await;
+    fees::void_charge(&mut t, owner, fee, because("Left"))
+        .await
+        .unwrap();
+    assert!(matches!(
+        fees::discount_charge(&mut t, owner, fee, off(1_000, "Late")).await,
+        Err(Error::Conflict(_))
+    ));
+    drop(t);
+    let mut o = tx(&pool, &other).await;
+    assert!(matches!(
+        fees::discount_charge(&mut o, actor(&other.owner), fee, off(1_000, "Sibling")).await,
+        Err(Error::NotFound)
+    ));
 }

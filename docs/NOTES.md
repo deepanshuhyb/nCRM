@@ -16,6 +16,42 @@ Template:
 
 ---
 
+## 2026-11-24: A discount lowers the fee itself, and the database polices it
+
+**Context:** "₹500 off for a sibling" was only possible by cancelling
+the fee and adding a cheaper one, which broke its link to the month and
+to money already paid towards it.
+
+**What wasn't obvious:**
+- What a student owes is worked out in about a dozen queries (the Fees
+  page, dues, reports, the bot, reminders, broadcasts), each as "the
+  fee's amount, less what has been paid towards it". A separate
+  "discount" figure would have to be subtracted in every one, and the
+  first one forgotten would show a family the wrong amount.
+- Until now the app's database role could not change a fee's amount at
+  all, only cancel it. That was a strong guarantee: no bug could rewrite
+  what someone owed. Discounts need to lower an amount.
+
+**What we did:**
+- A discount lowers `charges.amount_paise` in place and adds the same
+  amount to a new `discount_paise`, with a reason. Every existing query
+  reads the already-discounted amount and needed no change. The price
+  before discounts is always `amount_paise + discount_paise`.
+- The role may now update the amount, so a trigger
+  (`charges_discount_rules`, migration 0011) keeps the old guarantee in
+  a narrower form: the two columns must move together (the original
+  price can't change), an amount can only go down, and never below what
+  has been paid towards it.
+- `fees::discount_charge` is for owners and managers, needs a reason,
+  refuses to take everything off ("cancel the charge instead"), and
+  writes an audit entry with the amount before and after. A second
+  discount adds to the first and keeps both reasons.
+
+**Consequences:** a discount can't be undone; cancel the fee and add it
+again. Reports of "fees that fell due" show the discounted amounts,
+because that is what was actually asked for. A new query that works out
+what is owed needs no special handling.
+
 ## 2026-11-24: Importing students straight into their classes
 
 **Context:** a studio moving in has a sheet with a class beside each

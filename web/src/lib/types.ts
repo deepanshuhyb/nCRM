@@ -350,7 +350,11 @@ export type Charge = {
   id: string;
   kind: ChargeKind;
   description: string;
+  /** What is charged now, after any discount. */
   amount_paise: number;
+  /** How much has been taken off, and why. */
+  discount_paise: number;
+  discount_reason: string | null;
   paid_paise: number;
   due_on: string;
   period_start: string | null;

@@ -66,7 +66,12 @@ pub struct Charge {
     pub id: Uuid,
     pub kind: ChargeKind,
     pub description: String,
+    /// What is charged now, after any discount.
     pub amount_paise: i64,
+    /// How much has been taken off. The price before discounts is
+    /// `amount_paise + discount_paise`.
+    pub discount_paise: i64,
+    pub discount_reason: Option<String>,
     /// How much of it payments have covered so far.
     pub paid_paise: i64,
     pub due_on: Date,
@@ -307,6 +312,7 @@ async fn student_name(tx: &mut TenantTx, student_id: Uuid) -> Result<String> {
 
 const CHARGE_SELECT: &str = "
     SELECT c.id, c.kind, c.description, c.amount_paise,
+           c.discount_paise, c.discount_reason,
            coalesce(a.paid, 0)::bigint AS paid_paise,
            c.due_on, c.period_start,
            (c.voided_at IS NULL AND c.due_on < $1 AND c.amount_paise > coalesce(a.paid, 0)) AS overdue,
@@ -726,6 +732,97 @@ pub async fn void_charge(
             entity: "student".into(),
             entity_id: Some(student_id),
             detail: json!({ "charge_id": charge_id, "amount_paise": amount_paise, "reason": reason }),
+        },
+    )
+    .await?;
+    student_fees(tx, student_id).await
+}
+
+/// A discount: how much comes off a fee, and why.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Discount {
+    pub off_paise: i64,
+    pub reason: String,
+}
+
+/// Take something off a fee ("₹500 off, sibling"). The fee stays the
+/// same fee: same month, same receipt lines, less to pay. To take it all
+/// off, cancel the fee instead; to undo a discount, cancel the fee and
+/// add it again.
+pub async fn discount_charge(
+    tx: &mut TenantTx,
+    actor: Actor,
+    charge_id: Uuid,
+    discount: Discount,
+) -> Result<StudentFees> {
+    actor.require(Capability::AdjustFees)?;
+    let reason = validate::required(&discount.reason, 200, "The reason")?;
+    let off = amount(discount.off_paise, "The discount")?;
+    let student_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT student_id FROM charges WHERE id = $1")
+            .bind(charge_id)
+            .fetch_optional(tx.conn())
+            .await?;
+    let Some(student_id) = student_id else {
+        return Err(Error::NotFound);
+    };
+    lock_student(tx, student_id).await?;
+    // Read under the lock: a payment or a cancellation may have just landed.
+    let (now_paise, paid, voided, earlier): (i64, i64, bool, Option<String>) = sqlx::query_as(
+        "SELECT c.amount_paise,
+                coalesce((SELECT sum(a.amount_paise) FROM payment_allocations a
+                           WHERE a.org_id = c.org_id AND a.charge_id = c.id), 0)::bigint,
+                c.voided_at IS NOT NULL, c.discount_reason
+           FROM charges c WHERE c.id = $1",
+    )
+    .bind(charge_id)
+    .fetch_one(tx.conn())
+    .await?;
+    if voided {
+        return Err(Error::Conflict("That charge was cancelled.".into()));
+    }
+    if off >= now_paise {
+        return Err(Error::Invalid(
+            "That would take all of it off. Cancel the charge instead.".into(),
+        ));
+    }
+    if now_paise - off < paid {
+        return Err(Error::Invalid(format!(
+            "{} of this is already paid, so at most {} can come off.",
+            validate::rupees(paid),
+            validate::rupees(now_paise - paid)
+        )));
+    }
+    // A second discount keeps the first one's reason beside its own.
+    let reason_kept: String = match earlier {
+        Some(first) => format!("{first}; {reason}").chars().take(200).collect(),
+        None => reason.clone(),
+    };
+    sqlx::query(
+        "UPDATE charges
+            SET amount_paise = amount_paise - $2, discount_paise = discount_paise + $2,
+                discount_reason = $3, discounted_by = $4, discounted_at = now()
+          WHERE id = $1",
+    )
+    .bind(charge_id)
+    .bind(off)
+    .bind(&reason_kept)
+    .bind(actor.staff_id)
+    .execute(tx.conn())
+    .await?;
+    audit::record(
+        tx,
+        NewAuditEntry {
+            actor_staff_id: Some(actor.staff_id),
+            action: "fees.charge_discounted".into(),
+            entity: "student".into(),
+            entity_id: Some(student_id),
+            detail: json!({
+                "charge_id": charge_id,
+                "from_paise": now_paise,
+                "to_paise": now_paise - off,
+                "reason": reason,
+            }),
         },
     )
     .await?;

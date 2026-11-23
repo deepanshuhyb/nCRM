@@ -550,6 +550,7 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `GET /payments?from=&to=` | manage fees | Payments in a range with totals by method. Without "view financials": the last 7 days only |
 | `GET /payments/{id}` | manage fees | The receipt: what the money went to, and what's still owed |
 | `POST /payments/{id}/void`, `POST /charges/{id}/void` | adjust fees | Cancel with a reason. Nothing is deleted |
+| `POST /charges/{id}/discount` | adjust fees | `{off_paise, reason}`: take something off a fee. It stays the same fee with less to pay. Refused if it would take off everything (cancel instead) or go below what has been paid towards it |
 
 The two import routes take the file as the raw body, up to 2 MB, with
 Content-Type one of the spreadsheet types (or `application/octet-stream`).
@@ -714,6 +715,7 @@ Those need "manage classes", a reason, and leave an audit entry.
 | The bot telling a stranger about a student | Facts are read by the sender's number, inside the studio, for that contact's own students only; unknown numbers get the timetable | `bot::facts`, tests in `messaging.rs` and `whatsapp_inbox.rs` |
 | A message tricking the AI into doing something | The AI has no tools and is given only what the sender may already see; the worst case is an odd reply to the sender | `bot.rs` |
 | Parents' numbers and messages collecting in logs | The webhook, the senders and test mode log counts and error numbers, never a number or a message | `webhook.rs`, `messaging::send_queued` |
+| A fee quietly rewritten to a different amount | The app's database role may lower a charge only as a discount: a trigger requires the difference to move onto `discount_paise`, never raises an amount, and never goes below what has been paid; owners and managers only, with a reason, audited | `0011_discounts.sql`, `fees::discount_charge` |
 | A reminder sent twice, or at 3am, or about a fee from last year | One record per fee and step, written with the message under a studio lock; daytime only by the studio's clock; nothing more than ten days late is picked up | `reminders::queue_due`, `fee_reminders_sent` |
 | A group message sent to the wrong people, or twice | Preview shows the count and names before a second tap; owners and managers only; capped at 1000; an identical send within two minutes is refused | `broadcasts.rs` |
 | Meta retrying a delivery, or two senders at once | WhatsApp's message id is unique per studio; sending claims rows with `SKIP LOCKED` | `messaging::receive`, `send_queued` |

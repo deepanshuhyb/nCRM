@@ -310,3 +310,78 @@ async fn taking_money_at_the_front_desk(pool: PgPool) {
     assert_eq!(fees["payments"][0]["receipt_no"], 2);
     assert_eq!(fees["payments"][0]["amount_paise"], 120000);
 }
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn a_discount_is_for_owners_and_has_limits(pool: PgPool) {
+    let alpha = studio(&pool, "alpha").await;
+    hire(&pool, &alpha, OWNER, StaffRole::Owner).await;
+    hire(&pool, &alpha, DESK, StaffRole::FrontDesk).await;
+    let beta = studio(&pool, "beta").await;
+    hire(&pool, &beta, ELSEWHERE, StaffRole::Owner).await;
+    let app = TestApp::new(pool.clone());
+    let owner = app.sign_in(OWNER).await.1;
+    let desk = app.sign_in(DESK).await.1;
+    let elsewhere = app.sign_in(ELSEWHERE).await.1;
+    let post = |path: String, body: Value, who: Option<String>| {
+        let app = &app;
+        async move {
+            app.call(Method::POST, &path, Some(body), who.as_deref())
+                .await
+        }
+    };
+
+    let kid = post(
+        "/students".into(),
+        json!({ "name": "Bela" }),
+        Some(desk.clone()),
+    )
+    .await
+    .json["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let fees = post(
+        format!("/students/{kid}/charges"),
+        json!({ "description": "Term fee", "amount_paise": 250000 }),
+        Some(desk.clone()),
+    )
+    .await;
+    assert_eq!(fees.status, StatusCode::CREATED, "{:?}", fees.json);
+    let charge = fees.json["charges"][0]["id"].as_str().unwrap().to_string();
+    let path = format!("/charges/{charge}/discount");
+    let sibling = json!({ "off_paise": 50000, "reason": "Sibling" });
+
+    // Not the front desk, not signed out, not another studio's owner.
+    assert_eq!(
+        post(path.clone(), sibling.clone(), Some(desk.clone()))
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        post(path.clone(), sibling.clone(), None).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        post(path.clone(), sibling.clone(), Some(elsewhere))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    // No reason, all of it, and a body that isn't a discount.
+    for bad in [
+        json!({ "off_paise": 50000, "reason": " " }),
+        json!({ "off_paise": 250000, "reason": "Sibling" }),
+        json!({ "reason": "Sibling" }),
+    ] {
+        let r = post(path.clone(), bad, Some(owner.clone())).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    }
+
+    let done = post(path.clone(), sibling, Some(owner.clone())).await;
+    assert_eq!(done.status, StatusCode::OK, "{:?}", done.json);
+    assert_eq!(done.json["due_paise"], 200000);
+    assert_eq!(done.json["charges"][0]["amount_paise"], 200000);
+    assert_eq!(done.json["charges"][0]["discount_paise"], 50000);
+    assert_eq!(done.json["charges"][0]["discount_reason"], "Sibling");
+}

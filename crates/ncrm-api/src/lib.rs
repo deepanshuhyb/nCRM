@@ -191,6 +191,7 @@ pub fn router(state: AppState) -> Router {
         .route("/payments/{id}", get(fees::receipt))
         .route("/payments/{id}/void", post(fees::void_payment))
         .route("/charges/{id}/void", post(fees::void_charge))
+        .route("/charges/{id}/discount", post(fees::discount_charge))
         .route("/students/{id}/fees", get(fees::for_student))
         .route("/students/{id}/charges", post(fees::add_charge))
         .route("/students/{id}/payments", post(fees::record_payment))
