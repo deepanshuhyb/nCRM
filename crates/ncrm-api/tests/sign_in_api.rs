@@ -28,6 +28,10 @@ async fn an_owner_signs_in_and_manages_branches(pool: PgPool) {
 
     // The cookie is locked down.
     let set_cookie = verified.set_cookie.unwrap();
+    assert!(
+        set_cookie.starts_with("__Host-ncrm_session="),
+        "{set_cookie}"
+    );
     for flag in ["HttpOnly", "Secure", "SameSite=Lax", "Path=/"] {
         assert!(set_cookie.contains(flag), "missing {flag} in {set_cookie}");
     }
@@ -211,7 +215,12 @@ async fn requests_without_a_session_are_refused(pool: PgPool) {
         assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{path}");
         assert_eq!(r.error_code(), "not_signed_in");
         let forged = app
-            .call(Method::GET, path, None, Some("ncrm_session=made-up-token"))
+            .call(
+                Method::GET,
+                path,
+                None,
+                Some("__Host-ncrm_session=made-up-token"),
+            )
             .await;
         assert_eq!(forged.status, StatusCode::UNAUTHORIZED, "{path}");
     }

@@ -26,6 +26,10 @@ pub enum ApiError {
     InvalidCode,
     CodeLocked,
     RateLimited,
+    /// A state-changing request from a page that isn't our dashboard.
+    BadOrigin,
+    /// The request body is over the size limit.
+    TooLarge,
     /// Something broke on our side. The detail is logged, never sent.
     Internal(String),
 }
@@ -73,6 +77,16 @@ impl ApiError {
                 StatusCode::TOO_MANY_REQUESTS,
                 "too_many_requests",
                 "Too many requests. Try again in a little while.".into(),
+            ),
+            ApiError::BadOrigin => (
+                StatusCode::FORBIDDEN,
+                "bad_origin",
+                "This request came from a page that isn't the ncrm dashboard.".into(),
+            ),
+            ApiError::TooLarge => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "too_large",
+                "That request is too large.".into(),
             ),
             ApiError::Internal(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

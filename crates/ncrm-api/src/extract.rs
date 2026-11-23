@@ -19,9 +19,6 @@ use serde::de::DeserializeOwned;
 use crate::error::ApiError;
 use crate::AppState;
 
-/// Name of the cookie holding the session token.
-pub const SESSION_COOKIE: &str = "ncrm_session";
-
 /// A JSON request body. Malformed JSON becomes a 400 in our error shape.
 pub struct Body<T>(pub T);
 
@@ -35,6 +32,9 @@ where
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
         match Json::<T>::from_request(req, state).await {
             Ok(Json(value)) => Ok(Body(value)),
+            Err(rejection) if rejection.status() == axum::http::StatusCode::PAYLOAD_TOO_LARGE => {
+                Err(ApiError::TooLarge)
+            }
             Err(rejection) => Err(ApiError::Invalid(rejection.body_text())),
         }
     }
@@ -55,7 +55,7 @@ impl FromRequestParts<AppState> for SignedIn {
     ) -> Result<Self, Self::Rejection> {
         let jar = CookieJar::from_headers(&parts.headers);
         let token = jar
-            .get(SESSION_COOKIE)
+            .get(state.session_cookie_name())
             .map(|c| c.value().to_owned())
             .ok_or(ApiError::NotSignedIn)?;
         let session = auth::session_from_token(&state.pool, &token)

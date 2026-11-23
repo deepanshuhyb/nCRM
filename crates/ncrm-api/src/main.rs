@@ -1,4 +1,8 @@
+use std::net::SocketAddr;
+
 use anyhow::{bail, Context};
+use axum::http::HeaderName;
+use ncrm_api::security::SecurityConfig;
 use ncrm_api::{router, AppState};
 use ncrm_core::auth::{AuthConfig, CodeSender};
 use ncrm_core::db;
@@ -29,7 +33,30 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("migrations applied");
     }
 
-    let mut state = AppState::new(pool, auth, sender);
+    let mut security = SecurityConfig {
+        allowed_origins: std::env::var("ALLOWED_ORIGINS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|o| o.trim().trim_end_matches('/').to_string())
+            .filter(|o| !o.is_empty())
+            .collect(),
+        ..SecurityConfig::default()
+    };
+    if let Ok(name) = std::env::var("CLIENT_IP_HEADER") {
+        if !name.trim().is_empty() {
+            security.client_ip_header = Some(
+                HeaderName::from_bytes(name.trim().to_ascii_lowercase().as_bytes())
+                    .context("CLIENT_IP_HEADER is not a valid header name")?,
+            );
+        }
+    }
+    if security.allowed_origins.is_empty() {
+        tracing::warn!(
+            "ALLOWED_ORIGINS is empty: browsers will not be able to sign in or make changes"
+        );
+    }
+
+    let mut state = AppState::with_security(pool, auth, sender, security);
     state.cookie_secure = cookie_secure;
     if !cookie_secure {
         tracing::warn!("COOKIE_SECURE is off; only do this for local development over http");
@@ -40,7 +67,10 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("could not listen on {bind_addr}"))?;
     tracing::info!("ncrm-api listening on {bind_addr}");
 
-    axum::serve(listener, router(state))
+    // ConnectInfo gives handlers the TCP peer address, used for per-IP rate
+    // limits when no trusted proxy header is configured.
+    let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
+    axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

@@ -21,7 +21,10 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [x] Role checks (owner, manager, front desk, instructor)
 - [x] First studio-scoped endpoints: `/branches` list and create, with audit
 - [x] Architecture docs and engineering notes (`docs/ARCHITECTURE.md`, `docs/NOTES.md`)
-- [ ] Next.js dashboard shell and generated API client
+- [x] Browser-facing API protections: origin check, per-IP limits, `__Host-` cookie, no-store, body limit, timeout
+- [x] Next.js dashboard: sign-in, studio picker, app shell, home, branches, Daylight/Emerald themes
+- [x] Dashboard security: nonce CSP, security headers, same-origin `/api` gateway, safe redirects
+- [x] CI: dashboard lint, typecheck, tests, build; `cargo audit` and `pnpm audit`
 - [ ] Meta business verification started (owner task)
 
 ## 1. Core records
@@ -75,6 +78,7 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [ ] Subscription billing
 - [ ] Lead capture: Instagram, Meta lead ads, forms
 - [ ] Sheets sync, accounting export, public API and webhooks
-- [ ] Per-IP rate limiting at the reverse proxy (see NOTES, sign-in codes)
+- [ ] nginx config: TLS, `X-Real-IP`, only public listener; API and dashboard on 127.0.0.1
+- [ ] Move rate-limit counters to Postgres if we run more than one API process
 - [ ] Cleanup job: delete sign-in codes older than a day, expired sessions
 - [ ] Events, make-up credits, progress tracking

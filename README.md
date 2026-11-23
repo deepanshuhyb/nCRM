@@ -17,6 +17,7 @@ integrations for class-based businesses.
 | `crates/ncrm-api` | HTTP API (Axum) |
 | `crates/ncrm-worker` | Background jobs |
 | `migrations` | SQL migrations, applied in order |
+| `web` | The dashboard (Next.js), see `web/README.md` |
 
 ## Run it locally
 
@@ -27,6 +28,13 @@ docker compose up -d          # start Postgres
 cp .env.example .env          # then put a real AUTH_SECRET in .env
 export $(grep -v '^#' .env | xargs)
 cargo run -p ncrm-api         # http://localhost:8080/healthz
+```
+
+Then the dashboard, in another terminal:
+
+```sh
+cd web && cp .env.example .env.local && pnpm install && pnpm dev
+# open http://localhost:3000
 ```
 
 Try signing in (add a studio and a staff member with your number first;

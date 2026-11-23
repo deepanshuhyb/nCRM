@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::error::ApiError;
-use crate::extract::{Body, SignedIn, SESSION_COOKIE};
+use crate::extract::{Body, SignedIn};
 use crate::AppState;
 
 #[derive(Deserialize)]
@@ -79,11 +79,7 @@ pub async fn verify(
     Body(body): Body<VerifyRequest>,
 ) -> Result<(CookieJar, Json<Me>), ApiError> {
     let signed_in = auth::verify_code(&state.pool, &state.auth, &body.phone, &body.code).await?;
-    let cookie = session_cookie(
-        signed_in.token.clone(),
-        state.cookie_secure,
-        state.auth.session_ttl_secs,
-    );
+    let cookie = session_cookie(&state, signed_in.token.clone());
     let me = describe(&state, &signed_in.session, signed_in.memberships).await?;
     Ok((jar.add(cookie), Json(me)))
 }
@@ -112,10 +108,16 @@ pub async fn sign_out(
     headers: HeaderMap,
 ) -> Result<(StatusCode, CookieJar), ApiError> {
     let jar = CookieJar::from_headers(&headers);
-    if let Some(cookie) = jar.get(SESSION_COOKIE) {
+    let name = state.session_cookie_name();
+    if let Some(cookie) = jar.get(name) {
         auth::sign_out(&state.pool, cookie.value()).await?;
     }
-    let jar = jar.remove(Cookie::build(SESSION_COOKIE).path("/"));
+    let jar = jar.remove(
+        Cookie::build(name)
+            .path("/")
+            .secure(state.cookie_secure)
+            .http_only(true),
+    );
     Ok((StatusCode::NO_CONTENT, jar))
 }
 
@@ -142,14 +144,14 @@ async fn describe(
 }
 
 /// The session cookie: unreadable from JavaScript, only sent over HTTPS in
-/// production, and not sent on cross-site POSTs (which blocks CSRF together
-/// with the JSON-only request bodies).
-fn session_cookie(token: String, secure: bool, max_age_secs: i64) -> Cookie<'static> {
-    Cookie::build((SESSION_COOKIE, token))
+/// production (with the `__Host-` prefix), and not sent on cross-site POSTs.
+/// Together with the origin check and JSON-only bodies this blocks CSRF.
+fn session_cookie(state: &AppState, token: String) -> Cookie<'static> {
+    Cookie::build((state.session_cookie_name(), token))
         .http_only(true)
-        .secure(secure)
+        .secure(state.cookie_secure)
         .same_site(SameSite::Lax)
         .path("/")
-        .max_age(time::Duration::seconds(max_age_secs))
+        .max_age(time::Duration::seconds(state.auth.session_ttl_secs))
         .build()
 }

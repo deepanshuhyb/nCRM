@@ -16,6 +16,166 @@ Template:
 
 ---
 
+## 2026-11-23: Next.js 16 is not the Next.js most examples show
+
+**Context:** scaffolding the dashboard with `create-next-app@16.4.6`.
+
+**What wasn't obvious:** the generated `AGENTS.md` warns that APIs and
+conventions changed, and points to guides bundled in
+`node_modules/next/dist/docs/`. The ones that mattered:
+1. `middleware.ts` is deprecated and renamed `proxy.ts` (exported
+   function `proxy`). It runs on Node.js by default.
+2. New apps turn on `cacheComponents`, which prerenders a static shell for
+   every page. The bundled CSP guide says nonce-based CSP needs every page
+   rendered per request and is incompatible with prerendered shells,
+   because a shell built ahead of time can't carry a per-request nonce.
+3. With Cache Components, reading `cookies()` outside `<Suspense>` is a
+   build error.
+
+**What we did:** `cacheComponents: false`. Every dashboard page is
+per-person data anyway, so prerendering would buy nothing. The root layout
+reads `headers()`, which makes every page dynamic, and Next.js then adds
+the nonce from the request's CSP header to its own scripts. A production
+build lists every route as dynamic (ƒ), and a live check found all 12
+scripts on the sign-in page carrying that request's nonce.
+
+**Consequences:** read the bundled guide before touching framework-level
+code (`web/README.md` says so too). If a public, cacheable page is ever
+needed (a marketing site), it belongs in a separate app.
+
+## 2026-11-23: The dashboard talks to the API through its own `/api` gateway
+
+**Context:** the browser needs to call the API for sign-in and changes.
+
+**What wasn't obvious:** there are three common ways, and two of them
+weaken something. Calling the API's domain directly from the browser
+needs CORS with credentials and a cross-site cookie. A Next.js `rewrites`
+rule forwards everything (all headers, any path), which is hard to reason
+about.
+
+**What we did:** a route handler at `web/src/app/api/[...path]/route.ts`
+forwards explicitly:
+- only top-level paths on an allowlist (`auth`, `branches`), each segment
+  matching `[A-Za-z0-9_-]+`, so `..`, encoded slashes and `@host` tricks
+  can't escape (unit-tested);
+- only allowlisted request headers (cookie, content type, Origin, Fetch
+  Metadata, user agent, `x-real-ip`) and response headers (content type,
+  cache control, `Set-Cookie`);
+- bodies capped at 64 KB, redirects never followed, nothing cached.
+
+Server Components call the API directly (server to server) and forward
+only the session cookie. `api-server.ts` and `env.ts` import
+`server-only`, so the build fails if the API address ever ends up in a
+browser bundle.
+
+**Consequences:** every new top-level API path must be added to
+`ALLOWED_PREFIXES` in `web/src/lib/bff.ts`, or the dashboard gets a 404.
+Next.js itself normalizes `/api/branches/..` with a 308 to `/api`, which
+then 404s; that's harmless.
+
+## 2026-11-23: Cross-site request protection beyond SameSite
+
+**Context:** making the API safe to use from a browser.
+
+**What wasn't obvious:** `SameSite=Lax` plus JSON-only bodies already
+block classic CSRF, but both rely on browser behaviour we don't control
+(older browsers, subdomain takeovers count as "same site").
+
+**What we did:** a second, independent check on every POST/PUT/PATCH/
+DELETE (`ncrm-api/src/security.rs`):
+- if the request has an `Origin` header, it must exactly match one of
+  `ALLOWED_ORIGINS` (so `null`, look-alike domains and subdomains fail);
+- if it has no `Origin` but `Sec-Fetch-Site: cross-site`, it's refused;
+- requests with neither (curl, server-to-server) pass, because they can't
+  carry a victim's browser cookies.
+
+In production the cookie is `__Host-ncrm_session`. Browsers only accept a
+`__Host-` cookie when it's `Secure`, has `Path=/` and no `Domain`, so no
+subdomain can plant or overwrite it. Over local http the prefix is
+impossible, so dev uses `ncrm_session`. The dashboard reads either name.
+
+**Consequences:** `ALLOWED_ORIGINS` must be set in every environment or the
+browser can't sign in (the API logs a warning at startup if it's empty).
+
+## 2026-11-23: Per-IP rate limits and which IP to trust
+
+**Context:** last milestone's limits were per phone number, so one machine
+could spread guesses across many numbers.
+
+**What wasn't obvious:** behind a proxy, every request appears to come from
+the proxy's address. The real client IP arrives in a header, but anyone can
+send that header, so trusting it blindly lets an attacker pick a fresh
+"IP" for every request.
+
+**What we did:** in-memory fixed-window counters per (IP, endpoint):
+10 code requests and 30 verify attempts per IP per 10 minutes. The IP is
+the TCP peer by default. Only when `CLIENT_IP_HEADER` is set is a header
+used, and that's only safe because nginx overwrites `X-Real-IP` and is the
+only public entrance. A test proves a spoofed header is ignored when not
+configured. Expired counters are swept once more than 50,000 are tracked.
+
+**Consequences:** in-memory counters are per process. With more than one
+API process, move them to Postgres or Redis. The API and dashboard must
+listen on `127.0.0.1` only, or the header can be spoofed by going around
+nginx.
+
+## 2026-11-23: Content Security Policy trade-offs
+
+**Context:** strict CSP for the dashboard.
+
+**What wasn't obvious:**
+1. Nonces cover `<script>` and `<style>` elements but not `style="…"`
+   attributes, which React and Next.js both use (chart bar widths, the
+   route announcer). Under `style-src 'nonce-…'` alone they'd be blocked.
+2. The CSP example in the docs includes `upgrade-insecure-requests`. On a
+   local production run over `http://localhost`, browsers would try to
+   load the site's own files over https and fail.
+3. Google Fonts would need extra allowed origins and send visitors' IPs to
+   Google.
+
+**What we did:**
+1. Added `style-src-attr 'unsafe-inline'`: style attributes are allowed,
+   `<style>` elements still need the nonce. Attributes can't run script,
+   and `default-src 'self'` stops them loading anything from elsewhere.
+2. Dropped `upgrade-insecure-requests`: everything is same-origin, and HSTS
+   forces HTTPS in production anyway.
+3. Fonts are self-hosted with `next/font/local` (files and their SIL Open
+   Font Licenses in `web/src/app/fonts/`), so `font-src 'self'` holds.
+
+**Consequences:** any third-party script (analytics, chat widget) needs a
+deliberate CSP change and a note here.
+
+## 2026-11-23: An oversized body came back as 400, not 413
+
+**Context:** testing the 64 KB body limit.
+
+**What wasn't obvious:** Axum enforces the limit while the JSON extractor
+reads the body, so the failure arrives as a JSON *rejection*. Our `Body`
+extractor turned every rejection into `invalid_input` (400), hiding the
+real reason.
+
+**What we did:** `Body` checks the rejection's status and maps 413 to a
+dedicated `too_large` error. Caught by the test
+`oversized_bodies_are_refused`.
+
+**Consequences:** when wrapping an extractor, keep its status codes rather
+than collapsing them.
+
+## 2026-11-23: Echoed query strings in the page are not open redirects
+
+**Context:** the live check searched the sign-in page for an attacker's
+domain passed as `?next=//evil.example` and found it once.
+
+**What wasn't obvious:** whether that meant the redirect was live.
+
+**What we did:** traced it: Next.js serializes the current URL into its
+router state (encoded, as data). The value the sign-in form actually
+redirects to is `"/"`, produced by `safeNextPath`. Nothing renders or
+follows the raw parameter.
+
+**Consequences:** when checking for open redirects, check the value the
+code uses, not whether the string appears in the HTML.
+
 ## 2026-11-23: Cookie sessions and cross-site requests
 
 **Context:** the dashboard will call the API from a browser.

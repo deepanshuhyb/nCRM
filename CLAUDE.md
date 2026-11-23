@@ -3,7 +3,8 @@
 ncrm is a studio management product with WhatsApp built in: CRM,
 attendance for students and teachers, reminders and integrations, for
 class-based businesses. The first customer is a dance studio with three
-branches. Backend in Rust, database PostgreSQL, dashboard in Next.js.
+branches. Backend in Rust (`crates/`), database PostgreSQL, dashboard in
+Next.js 16 (`web/`, read `web/AGENTS.md` before touching framework code).
 
 Read these before changing anything:
 
@@ -42,6 +43,11 @@ Rust and Postgres internals: explain the why, not only the what.
 - Never log or store sign-in codes or session tokens in the clear. The
   `Log` code sender is for local development only.
 - Never commit `.env` or any secret.
+- The dashboard never calls the API's address from the browser: browser
+  code uses `/api/...` (the gateway), server code uses `lib/api-server.ts`.
+  New top-level API paths go on the gateway allowlist in `web/src/lib/bff.ts`.
+- No third-party scripts, fonts or origins in the dashboard without a CSP
+  change and a `docs/NOTES.md` entry.
 
 ## Before every commit
 
@@ -49,6 +55,7 @@ Rust and Postgres internals: explain the why, not only the what.
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 DATABASE_URL=postgres://… cargo test --workspace
+cd web && pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
 
 Every feature ships with tests against a real Postgres (`#[sqlx::test]`),

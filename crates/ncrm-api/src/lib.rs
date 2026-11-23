@@ -4,6 +4,7 @@
 //! - `extract`: who is calling and in which studio (cookies → session →
 //!   staff context), plus JSON bodies with our error shape.
 //! - `error`: the one JSON error format.
+//! - `security`: origin check, per-IP rate limits, client address.
 //! - `sign_in`: `/auth/*`.
 //! - `branches`: the first studio-scoped resource, and the pattern the rest
 //!   follow.
@@ -11,17 +12,31 @@
 pub mod branches;
 pub mod error;
 pub mod extract;
+pub mod security;
 pub mod sign_in;
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use axum::extract::State;
-use axum::http::StatusCode;
+use axum::extract::{DefaultBodyLimit, State};
+use axum::http::{header, HeaderName, HeaderValue, StatusCode};
+use axum::middleware;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use ncrm_core::auth::{AuthConfig, CodeSender};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use tower_http::set_header::SetResponseHeaderLayer;
+use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::TraceLayer;
+
+use security::{RateLimiter, SecurityConfig};
+
+/// Largest request body accepted. Every request is small JSON.
+pub const MAX_BODY_BYTES: usize = 64 * 1024;
+
+/// Longest a request may take before it is cut off.
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Shared state handed to every request handler.
 #[derive(Clone)]
@@ -29,32 +44,99 @@ pub struct AppState {
     pub pool: PgPool,
     pub auth: Arc<AuthConfig>,
     pub sender: CodeSender,
-    /// Mark the session cookie Secure (HTTPS only). Off only for local
-    /// development over plain http.
+    /// Mark the session cookie Secure (HTTPS only) and give it the
+    /// `__Host-` prefix. Off only for local development over plain http.
     pub cookie_secure: bool,
+    pub security: Arc<SecurityConfig>,
+    pub limiter: Arc<RateLimiter>,
 }
 
 impl AppState {
     pub fn new(pool: PgPool, auth: AuthConfig, sender: CodeSender) -> Self {
+        Self::with_security(pool, auth, sender, SecurityConfig::default())
+    }
+
+    pub fn with_security(
+        pool: PgPool,
+        auth: AuthConfig,
+        sender: CodeSender,
+        security: SecurityConfig,
+    ) -> Self {
         Self {
             pool,
             auth: Arc::new(auth),
             sender,
             cookie_secure: true,
+            limiter: Arc::new(RateLimiter::new(security.window)),
+            security: Arc::new(security),
+        }
+    }
+
+    /// The session cookie's name. Over HTTPS it carries the `__Host-`
+    /// prefix, which browsers only accept from the exact host, over HTTPS,
+    /// with `Path=/` and no `Domain`, so no subdomain can plant or
+    /// overwrite it.
+    pub fn session_cookie_name(&self) -> &'static str {
+        if self.cookie_secure {
+            "__Host-ncrm_session"
+        } else {
+            "ncrm_session"
         }
     }
 }
 
-/// Build the application's routes.
+/// Build the application's routes and protective layers.
 pub fn router(state: AppState) -> Router {
+    let code = post(sign_in::request_code).route_layer(middleware::from_fn_with_state(
+        state.clone(),
+        security::limit_code_requests,
+    ));
+    let verify = post(sign_in::verify).route_layer(middleware::from_fn_with_state(
+        state.clone(),
+        security::limit_verify_requests,
+    ));
+
     Router::new()
         .route("/healthz", get(healthz))
-        .route("/auth/code", post(sign_in::request_code))
-        .route("/auth/verify", post(sign_in::verify))
+        .route("/auth/code", code)
+        .route("/auth/verify", verify)
         .route("/auth/me", get(sign_in::me))
         .route("/auth/studio", post(sign_in::select_studio))
         .route("/auth/sign-out", post(sign_in::sign_out))
         .route("/branches", get(branches::list).post(branches::create))
+        // Layers run outside-in for requests: the last one added runs first.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            security::origin_guard,
+        ))
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            REQUEST_TIMEOUT,
+        ))
+        // Every response is personal or operational: never cache it, never
+        // sniff it, never leak the URL onward, never render it as a page.
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static("default-src 'none'; frame-ancestors 'none'"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("cross-origin-resource-policy"),
+            HeaderValue::from_static("same-origin"),
+        ))
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
 
