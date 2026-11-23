@@ -74,6 +74,18 @@ impl TenantTx {
         Ok(today)
     }
 
+    /// Today's date and the time of day where the studio is.
+    pub async fn studio_now(&mut self) -> Result<(time::Date, time::Time)> {
+        let now: (time::Date, time::Time) = sqlx::query_as(
+            "SELECT (now() AT TIME ZONE timezone)::date, (now() AT TIME ZONE timezone)::time
+               FROM organizations WHERE id = $1",
+        )
+        .bind(self.org_id)
+        .fetch_one(&mut *self.tx)
+        .await?;
+        Ok(now)
+    }
+
     /// Wait for, then hold until this transaction ends, a lock named
     /// `name` within this studio. Serializes rare, check-then-write work
     /// (schedule clash checks) that row locks can't cover.

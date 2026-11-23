@@ -368,6 +368,9 @@ pub async fn update(
         .execute(tx.conn())
         .await?;
     write_slots(tx, id, &checked.slots).await?;
+    // Today's unmarked sessions were made from the old slots: let them be
+    // made again from the new ones.
+    crate::attendance::forget_untouched(tx, id).await?;
 
     // Archiving takes everyone out, from today.
     let mut students_removed = 0;

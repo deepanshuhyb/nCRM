@@ -205,6 +205,8 @@ pub async fn sell(
         },
     )
     .await?;
+    // New credits first pay for classes already attended without one.
+    crate::attendance::settle_owed(tx, actor, student_id).await?;
     summary(tx, student_id).await
 }
 
@@ -250,6 +252,8 @@ pub async fn give(
         },
     )
     .await?;
+    // New credits first pay for classes already attended without one.
+    crate::attendance::settle_owed(tx, actor, student_id).await?;
     summary(tx, student_id).await
 }
 
@@ -323,6 +327,57 @@ pub async fn take_back(
     )
     .await?;
     summary(tx, student_id).await
+}
+
+/// Spend one credit for a class on `on`, from the usable lot that expires
+/// soonest. Returns the lot, or `None` when the student has no credit that
+/// was valid that day.
+pub(crate) async fn use_one(
+    tx: &mut TenantTx,
+    actor: Actor,
+    student_id: Uuid,
+    on: Date,
+) -> Result<Option<Uuid>> {
+    tx.lock_studio(&format!("credits:{student_id}")).await?;
+    let lot: Option<Uuid> = sqlx::query_scalar(
+        "SELECT l.id FROM credit_lots l
+          WHERE l.student_id = $1
+            AND (l.expires_on IS NULL OR l.expires_on >= $2)
+            AND l.classes + coalesce((SELECT sum(m.change) FROM credit_moves m
+                                       WHERE m.org_id = l.org_id AND m.lot_id = l.id), 0) > 0
+          ORDER BY l.expires_on NULLS LAST, l.created_at
+          LIMIT 1",
+    )
+    .bind(student_id)
+    .bind(on)
+    .fetch_optional(tx.conn())
+    .await?;
+    if let Some(lot_id) = lot {
+        sqlx::query(
+            "INSERT INTO credit_moves (org_id, lot_id, change, reason, created_by)
+             VALUES ($1, $2, -1, 'used', $3)",
+        )
+        .bind(tx.org_id())
+        .bind(lot_id)
+        .bind(actor.staff_id)
+        .execute(tx.conn())
+        .await?;
+    }
+    Ok(lot)
+}
+
+/// Give back a credit that `use_one` took (an attendance mark corrected).
+pub(crate) async fn return_one(tx: &mut TenantTx, actor: Actor, lot_id: Uuid) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO credit_moves (org_id, lot_id, change, reason, created_by)
+         VALUES ($1, $2, 1, 'returned', $3)",
+    )
+    .bind(tx.org_id())
+    .bind(lot_id)
+    .bind(actor.staff_id)
+    .execute(tx.conn())
+    .await?;
+    Ok(())
 }
 
 #[derive(sqlx::FromRow)]

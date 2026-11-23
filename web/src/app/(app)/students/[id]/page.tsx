@@ -7,6 +7,7 @@ import { TakeOutButton } from "@/components/take-out-button";
 import {
   getMe,
   getStudent,
+  getStudentAttendance,
   getStudentCredits,
   getStudentEnrollments,
   getSummary,
@@ -15,7 +16,7 @@ import {
   listPlans,
 } from "@/lib/api-server";
 import { ageFrom, formatDate, formatPhone, formatRupees, scheduleSummary } from "@/lib/format";
-import { RELATION_LABEL, STATUS_LABEL } from "@/lib/types";
+import { ATTENDANCE_LABEL, RELATION_LABEL, STATUS_LABEL } from "@/lib/types";
 
 import { AdjustCredits, JoinClassForm, SellPackForm } from "./student-classes";
 import { AddContactForm, EditStudentForm, RemoveContactButton } from "./student-editors";
@@ -27,7 +28,7 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
   const can = new Set(me.studio!.capabilities);
   if (!can.has("manage_students")) return <NotAllowed what="students" />;
   const { id } = await params;
-  const [student, branches, enrollments, credits, batches, plans, summary] = await Promise.all([
+  const [student, branches, enrollments, credits, batches, plans, summary, attendance] = await Promise.all([
     getStudent(id),
     listBranches(),
     getStudentEnrollments(id),
@@ -35,6 +36,7 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
     listBatches(),
     listPlans(),
     getSummary(),
+    getStudentAttendance(id),
   ]);
   const current = enrollments.filter((e) => e.ended_on === null);
   const past = enrollments.filter((e) => e.ended_on !== null);
@@ -229,6 +231,35 @@ export default async function StudentPage({ params }: PageProps<"/students/[id]"
           ) : null}
         </section>
       </div>
+
+      <section aria-labelledby="attendance-title" className="glass flex flex-col gap-3 p-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 id="attendance-title" className="font-display m-0 text-[20px] font-semibold">
+            Attendance
+          </h2>
+          <p className="soft m-0 text-sm font-semibold">
+            {attendance.came + attendance.missed === 0
+              ? "Nothing marked in the last 30 days"
+              : `Last 30 days: came ${attendance.came}, missed ${attendance.missed}`}
+          </p>
+        </div>
+        {attendance.recent.length === 0 ? (
+          <p className="soft m-0">No classes marked yet.</p>
+        ) : (
+          <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+            {attendance.recent.map((m, i) => (
+              <li
+                key={`${m.on_date}-${m.batch_name}-${i}`}
+                className={m.status === "absent" ? "tag tag-attn" : m.status === "excused" ? "tag tag-quiet" : "tag tag-good"}
+                title={`${m.batch_name}${m.drop_in ? " (drop-in)" : ""}`}
+              >
+                {formatDate(m.on_date).replace(/ \d{4}$/, "")}: {ATTENDANCE_LABEL[m.status]}
+                <span className="sr-only">, {m.batch_name}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <EditStudentForm
         student={{

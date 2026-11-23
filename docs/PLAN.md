@@ -44,11 +44,14 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 
 ## 2. Attendance and bookings
 
-- [ ] Sessions generated from batch schedules; cancel and reschedule
-- [ ] Bookings: automatic for batch members, single for drop-ins
-- [ ] Capacity and waitlists
-- [ ] Student attendance and teacher check-in
-- [ ] Alerts: unmarked class, three absences in a row
+- [x] Sessions from class schedules, created on demand for today and the past; cancel with a reason and bring back
+- [x] Members are expected automatically; drop-ins are added per class and use a credit
+- [x] Student attendance (present, late, absent, excused) and teacher check-in with substitutes
+- [x] Credits spent when someone comes, returned when the mark changes, owed when there are none
+- [x] Alerts: class over and not marked, three absences in a row (on the Today page and home)
+- [ ] Reschedule one meeting to another time or room; a one-off extra class
+- [ ] Booking a place in a future class (needs sessions ahead of time), capacity for drop-ins, waitlists
+- [ ] Students on a break: skip them in the roster between two dates
 
 ## 3. WhatsApp
 

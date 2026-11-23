@@ -54,7 +54,7 @@ export default async function HomePage() {
       action: can.has("manage_students") ? { href: "/students/new", label: "Add a student" } : null,
       view: can.has("manage_students") ? "/students" : null,
     },
-    { title: "Connect WhatsApp", done: false, detail: "Comes after attendance", action: null, view: null },
+    { title: "Connect WhatsApp", done: false, detail: "Comes after fees", action: null, view: null },
   ];
   const remaining = steps.filter((s) => !s.done).length;
 
@@ -126,23 +126,49 @@ export default async function HomePage() {
             note={summary.classes === 0 ? "Set up your timetable" : `${summary.plans} ${summary.plans === 1 ? "price" : "prices"} set`}
             href="/classes"
           />
-          <Tile label="Attendance" value="Not yet" note="Comes next, on top of the timetable" href={null} small />
+          <Tile
+            label="Classes today"
+            value={String(summary.classes_today)}
+            note={
+              summary.unmarked > 0
+                ? `${summary.unmarked} ${summary.unmarked === 1 ? "class needs" : "classes need"} marking`
+                : "Attendance is up to date"
+            }
+            href="/attendance"
+            attention={summary.unmarked > 0}
+          />
         </section>
       </div>
     </div>
   );
 }
 
-function Tile({ label, value, note, href, small }: { label: string; value: string; note: string; href: string | null; small?: boolean }) {
+function Tile({
+  label,
+  value,
+  note,
+  href,
+  attention,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  href: string | null;
+  attention?: boolean;
+}) {
   const body = (
     <>
       <span className="muted text-sm font-medium">{label}</span>
-      <span className={`font-display leading-none font-semibold ${small ? "text-[26px]" : "text-[48px]"}`}>{value}</span>
-      <span className="soft text-[13px]">{note}</span>
+      <span className="font-display text-[48px] leading-none font-semibold">{value}</span>
+      <span className={attention ? "attn-text text-[13px] font-semibold" : "soft text-[13px]"}>{note}</span>
     </>
   );
   return href ? (
-    <Link href={href} className="glass flex flex-col justify-between gap-4 p-[22px] no-underline" style={{ color: "inherit" }}>
+    <Link
+      href={href}
+      className={`glass ${attention ? "glass-attn" : ""} flex flex-col justify-between gap-4 p-[22px] no-underline`}
+      style={{ color: "inherit" }}
+    >
       {body}
     </Link>
   ) : (

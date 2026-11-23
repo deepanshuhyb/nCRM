@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { apiSend } from "@/lib/api-client";
 
-export type NavItem = { href: string; label: string };
+import { BOTTOM_NAV_SLOTS, type NavItem } from "@/lib/nav";
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
@@ -25,19 +25,32 @@ export function TopNav({ items }: { items: NavItem[] }) {
   );
 }
 
+/**
+ * The phone's bottom bar. With more pages than fit, the last slot becomes
+ * "More", which opens a page listing the rest.
+ */
 export function BottomNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
+  const overflow = items.length > BOTTOM_NAV_SLOTS + 1;
+  const shown = overflow ? items.slice(0, BOTTOM_NAV_SLOTS) : items;
+  const hidden = overflow ? items.slice(BOTTOM_NAV_SLOTS) : [];
+  const inMore = pathname === "/more" || hidden.some((i) => isActive(pathname, i.href));
   return (
     <nav
       aria-label="Main"
       className="bottom-nav glass"
-      style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+      style={{ gridTemplateColumns: `repeat(${shown.length + (overflow ? 1 : 0)}, minmax(0, 1fr))` }}
     >
-      {items.map((item) => (
+      {shown.map((item) => (
         <Link key={item.href} href={item.href} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
           {item.label}
         </Link>
       ))}
+      {overflow ? (
+        <Link href="/more" aria-current={inMore ? "page" : undefined}>
+          More
+        </Link>
+      ) : null}
     </nav>
   );
 }

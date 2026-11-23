@@ -52,6 +52,16 @@ describe("apiTarget", () => {
     }
   });
 
+  it("reaches attendance, and nothing that only looks like it", () => {
+    const id = "0b8f3e1c-1f2a-4c3d-9e8f-123456789abc";
+    expect(apiTarget(API, ["sessions"], "?date=2026-11-23")?.toString()).toBe(`${API}/sessions?date=2026-11-23`);
+    expect(apiTarget(API, ["sessions", id, "attendance"], "")?.pathname).toBe(`/sessions/${id}/attendance`);
+    expect(apiTarget(API, ["sessions", id, "drop-ins", id], "")?.pathname).toBe(`/sessions/${id}/drop-ins/${id}`);
+    expect(apiTarget(API, ["attendance", "alerts"], "")?.pathname).toBe("/attendance/alerts");
+    expect(apiTarget(API, ["session"], "")).toBeNull();
+    expect(apiTarget(API, ["sessions-admin"], "")).toBeNull();
+  });
+
   it.each([
     [[]],
     [["healthz"]],

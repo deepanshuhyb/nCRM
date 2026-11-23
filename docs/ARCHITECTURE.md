@@ -58,6 +58,8 @@ crates/
     src/plans.rs     prices: monthly fees, packs, drop-ins
     src/enrollments.rs  putting students in classes and taking them out
     src/credits.rs   class credits from packs and drop-ins
+    src/attendance.rs  sessions (one meeting of a class), marks, teacher
+                     check-in, cancelling, alerts
     src/import.rs    student lists from .xlsx/.csv: safe reading, preview, commit
     src/validate.rs  shared input checks with plain messages
     src/phone.rs     phone number normalization
@@ -75,15 +77,19 @@ crates/
     src/plans.rs     /plans
     src/enrollments.rs  /students/{id}/enrollments, /enrollments, credits
     src/import.rs    /students/import: raw file uploads with their own size limit
+    src/attendance.rs  /sessions, /attendance/alerts, /students/{id}/attendance
   ncrm-worker/  background jobs (stub)
 migrations/     SQL, applied in order, embedded into the binaries
 web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
   src/proxy.ts               CSP nonce + security headers, sign-in redirect
   src/app/api/[...path]/     same-origin gateway to the Rust API
   src/app/(auth)/            sign-in, choose a studio
-  src/app/(app)/             the signed-in app: shell, home, branches,
-                             classes (timetable, prices), students, team
+  src/app/(app)/             the signed-in app: shell, home, today
+                             (attendance), branches, classes (timetable,
+                             prices), students, team, more
   src/components/timetable.tsx  the week grid (server-rendered, no JS)
+  src/components/session-row.tsx  one class meeting as a row, with its marking state
+  src/lib/nav.ts             which pages a role sees, in one place
   public/templates/          the student import template (.xlsx, .csv)
 scripts/make_student_template.py  rebuilds that template
   src/lib/api-server.ts      server-side API calls (server-only)
@@ -144,6 +150,8 @@ the same pooled connection starts clean. A test proves this. Full rules:
 | `enrollments` | "this student is a regular in this class" | `ended_on` is the day they left; one open enrollment per student and class |
 | `credit_lots` | classes given at once (a pack sold, a drop-in, free classes) | Price copied at sale; `expires_on` is the last usable day. Append-only |
 | `credit_moves` | a later change to a lot (used, returned, taken back) | Append-only; a trigger keeps each lot between 0 and its size |
+| `sessions` | one meeting of a class on one date ("Hip-hop Beginners, Monday 23 Nov, 18:00") | Created on demand from the weekly slots, for today and the past only. `scheduled` or `cancelled` (with a reason). Holds who taught that day and whether they were there |
+| `attendance` | one student's mark at one session | `present`, `late`, `absent` or `excused`; `drop_in` for someone who isn't a regular; remembers the credit lot it used, or `owes_credit` when there was none |
 | `audit_log` | something that changed, who did it | Append-only: the app role can insert and read, not change or delete |
 
 ```
@@ -151,7 +159,10 @@ students ──< student_contacts >── contacts
    │
    ├──< enrollments >── batches ──< batch_slots
    │         │            │  └──▶ rooms ──▶ branches
-   │         └──▶ plans   └──▶ staff (teacher)
+   │         └──▶ plans   ├──▶ staff (usual teacher)
+   │                      └──< sessions ──▶ staff (who taught that day)
+   ├──< attendance >─────────────┘
+   │        └──▶ credit_lots (the credit this class used)
    │
    └──< credit_lots ──< credit_moves
              └──▶ plans
@@ -173,6 +184,14 @@ deactivated); classes are archived; plans stop being offered; leaving a
 class sets `ended_on`. Erasing a person on request is a separate, audited
 job, not a button (planned; see `docs/PLAN.md`).
 
+`sessions` and `attendance` are the two studio tables where the app role
+may delete, each for one reason. Sessions nobody has touched are removed
+when a class's days or times change, so they're made again from the new
+slots. Attendance rows go when a drop-in was added by mistake or the class
+is cancelled. In both cases any credit used is first given back through
+the ledger, and the audit log keeps who did it and how many credits were
+returned.
+
 Class credits are a ledger the app role can only add to: `SELECT, INSERT`
 on `credit_lots` and `credit_moves`, nothing else. A credit is never
 edited; a correction is a new move with a reason. The trigger
@@ -188,9 +207,12 @@ once can't spend a credit twice.
 | A class doesn't go over capacity | Enrolling locks the class row (`SELECT … FOR UPDATE`) before counting |
 | A studio keeps an owner | The other owners' rows are locked before the check |
 | A credit isn't spent twice | The ledger trigger takes a per-lot advisory lock before summing |
+| Two people marking the same class don't undo each other | Every change to a session first locks its row (`SELECT … FOR UPDATE` in `attendance::markable`), so the second save runs after the first and sees its marks and credits |
+| A session isn't created twice | `sessions` is unique on (studio, class, date, start time) and creation is `INSERT … ON CONFLICT DO NOTHING` |
 
-Each has a test that runs two transactions at once and checks the second
-is refused.
+The first five each have a test that runs two transactions at once and
+checks the second one is refused or, for marking, waits its turn and then
+spends no second credit. The last is a plain uniqueness constraint.
 
 ### Dates and times
 
@@ -198,6 +220,15 @@ The API server runs on UTC. "Today" for a studio comes from
 `TenantTx::studio_today()`, which uses the studio's `timezone` (India by
 default). Class times are wall-clock `time` values, sent as `"18:00"`.
 Dates are `"2026-11-23"`.
+
+Sessions are not generated ahead of time. `attendance::ensure(from, to)`
+creates the ones the weekly slots imply, for dates up to the studio's
+today, whenever someone opens a day. A class that started mid-month, ended
+last week or is archived gets none outside its dates. "Has this class
+ended?" compares the session's date and end time with
+`TenantTx::studio_now()`, the wall-clock date and time in the studio's
+timezone. Marking goes back 90 days (`MAX_DAYS_BACK`); an instructor can
+correct their own classes for 7 (`INSTRUCTOR_DAYS_BACK`).
 
 Join dates and class start dates can be set in the past. The API returns
 `entered_on` next to them: the studio's date when the row was created,
@@ -284,12 +315,21 @@ referrer policy, permissions policy, HSTS in production) are set in
 | `/branches` | (now also) | Rooms per branch, added and edited in place |
 | `/students/[id]` | (now also) | Their classes, put in a class, class credits, sell a pack, give or take back credits; Backdated pills on the join date and class starts |
 | `/students/import` | manage students | Choose a file and a default branch; see every row's fate (added, already here, repeated, can't be added, added with a note); add them |
+| `/attendance` ("Today") | everyone | One day's classes with how marking stands, by branch; step back a day at a time (never forward). Beside it: earlier classes still not marked, and students who missed three in a row. Instructors see alerts for their own classes |
+| `/attendance/[id]` | everyone; marking for the class's teacher and anyone who marks any class | The roster with Present / Late / Absent / Excused per student, "Everyone's here", one Save that sends only what changed; teacher check-in and substitute; add or remove a drop-in; cancel with a reason, or bring back |
+| `/more` | everyone | On phones, the pages that don't fit in the bottom bar |
+| `/` | (now also) | "Classes today" tile, in the attention colour when classes need marking |
+| `/students/[id]` | (now also) | Attendance: came and missed in the last 30 days, and the latest marks |
 
 Navigation shows only the pages the role can open (built from the
 capabilities in `/auth/me`). That is a convenience: a page opened directly
 by someone without the capability shows "You can't open …", and the API
 refuses the data anyway. A student or member id that isn't a UUID, doesn't
-exist, or belongs to another studio gives the same 404 page.
+exist, or belongs to another studio gives the same 404 page
+(`(app)/not-found.tsx`, drawn inside the signed-in shell).
+
+The list of pages lives in `src/lib/nav.ts`. The phone's bottom bar has
+room for five: with more, it shows the first four and "More".
 
 Theme (Daylight or Emerald) is a plain, non-sensitive `ncrm_theme` cookie
 read on the server, so the page renders in the right theme without a
@@ -348,7 +388,7 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `POST /auth/code`, `/auth/verify` | nothing (rate limited) | Sign-in, see below |
 | `GET /auth/me` | session | Who am I, which studio, which capabilities |
 | `POST /auth/studio`, `/auth/sign-out` | session | Switch studio, sign out |
-| `GET /summary` | view studio | Counts for the home page (branches, students, team, classes, plans) and the studio's date |
+| `GET /summary` | view studio | Counts for the home page (branches, students, team, classes, plans, classes today, classes needing marks) and the studio's date |
 | `GET, POST /branches` | view / manage branches | List, add |
 | `GET, POST /staff` | manage staff | List the team, add someone |
 | `PUT /staff/{id}` | manage staff | Replace name, phone, role, branch, active |
@@ -371,6 +411,14 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `POST /students/{id}/credits/give`, `/take-back` | manage classes | Free classes or take some back, with a reason |
 | `POST /students/import/preview?branch_id=` | manage students | Body: the .xlsx or .csv file. What would happen to every row; writes nothing |
 | `POST /students/import?branch_id=` | manage students | Same file: adds the ready rows in one transaction, skips the rest |
+| `GET /sessions?date=&branch_id=` | view studio | One day's class meetings (today by default, up to 90 days back, never the future) with counts: expected, came, away, not marked |
+| `GET /sessions/{id}` | view studio | One meeting; `roster` is null unless you may mark it or manage students; `can_mark` says whether you may |
+| `PUT /sessions/{id}/attendance` | mark own attendance, and the session must be yours unless you mark any | Body `{marks: [{student_id, status}]}`. Each mark replaces that student's earlier one. Up to 600 at once |
+| `POST /sessions/{id}/drop-ins`, `DELETE /sessions/{id}/drop-ins/{student_id}` | same | Add someone who isn't a regular (marked present, one credit used); take them off again (credit returned) |
+| `PUT /sessions/{id}/teacher` | same | `{present, instructor_id}`. Instructors can check themselves in; only "mark any" can set a substitute or mark a teacher absent |
+| `POST /sessions/{id}/cancel`, `/restore` | mark any attendance | Cancel with a reason (marks cleared, credits returned); undo it |
+| `GET /attendance/alerts` | view studio | Classes in the last 7 days that are over and not fully marked; students whose last three or more marks in a class are absences. Instructors get their own classes only |
+| `GET /students/{id}/attendance` | manage students | Came and missed in the last 30 days, and the latest marks |
 
 The two import routes take the file as the raw body, up to 2 MB, with
 Content-Type one of the spreadsheet types (or `application/octet-stream`).
@@ -466,6 +514,22 @@ roster for staff who manage students and for that class's teacher, and
 `null` for everyone else. The roster has names and plans, never phone
 numbers.
 
+Attendance has a rule the matrix can't express on its own: *whose class
+is it?* `attendance::may_mark` answers it in one place. Owners, managers
+and the front desk ("mark any") may mark every class. An instructor
+("mark own") may mark a session only if they are that day's teacher or
+the class's usual teacher. For a class that isn't theirs, an instructor
+gets the counts and no names (`roster: null`), the same as on the class
+page. On top of that:
+
+- An instructor can check themselves in, but can't mark themselves
+  absent or name a substitute; those are the front desk's to record.
+- Cancelling a class and bringing it back need "mark any".
+- An instructor can correct marks for a week; older changes go through
+  the front desk, and nobody changes attendance older than 90 days.
+- Adding a drop-in means searching students, which needs "manage
+  students", so in the dashboard it's offered to the front desk and up.
+
 Front desk sells packs (money comes in) but can't give classes away or
 take credits back, because that's revenue the studio doesn't collect.
 Those need "manage classes", a reason, and leave an audit entry.
@@ -483,6 +547,11 @@ Those need "manage classes", a reason, and leave an audit entry.
 | Overfilled classes | Capacity counted under a row lock | `enrollments::enroll` |
 | Credits spent twice or invented | Append-only ledger, balance trigger with a per-lot lock | migration 0004, `credits.rs` |
 | Free classes handed out quietly | Owners and managers only, reason required, audited | `credits::give` |
+| An instructor marking (or reading the roster of) someone else's class | One rule, `may_mark`, used by every attendance function; roster withheld when it fails | `attendance.rs` |
+| A class attended without paying for it | Coming spends a credit in the same transaction as the mark; with none left the mark is flagged `owes_credit` and settled by the next pack | `attendance::save_mark`, `settle_owed` |
+| A credit lost when a mark is corrected or a class cancelled | The mark remembers its lot; changing it, removing a drop-in or cancelling returns the credit to that lot first | `attendance.rs`, `credits::return_one` |
+| Attendance rewritten long after the fact | 7 days for instructors, 90 for everyone; every save audited with counts | `attendance::markable` |
+| Marking a class that hasn't happened | Sessions exist only for today and earlier | `attendance::ensure` |
 | Error text showing internals | Constraint names and parser messages turned into sentences | `ncrm_core::error`, `extract.rs` |
 | A booby-trapped spreadsheet | 2 MB cap; zip entries actually unpacked under a 30 MB cap before parsing; cells streamed with row and column caps; old .xls refused; parsing on a blocking thread | `import.rs` |
 | A cross-site form posting a file | Upload routes accept only spreadsheet content types | `ncrm-api/src/import.rs` |

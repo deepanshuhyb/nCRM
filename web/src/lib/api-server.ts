@@ -7,6 +7,10 @@ import { notFound, redirect } from "next/navigation";
 import { apiOrigin } from "@/lib/env";
 import type {
   ApiErrorBody,
+  AttendanceAlerts,
+  SessionDetail,
+  SessionSummary,
+  StudentAttendance,
   BatchDetail,
   BatchSummary,
   Branch,
@@ -149,4 +153,28 @@ export function getBatch(id: string): Promise<BatchDetail> {
 /** Prices. Front desk and up. */
 export function listPlans(): Promise<Plan[]> {
   return apiGet<Plan[]>("/plans");
+}
+
+/** One day's class meetings (today when no date is given). */
+export function listSessions(query: { date?: string; branchId?: string } = {}): Promise<SessionSummary[]> {
+  const params = new URLSearchParams();
+  if (query.date && /^\d{4}-\d{2}-\d{2}$/.test(query.date)) params.set("date", query.date);
+  if (query.branchId && UUID.test(query.branchId)) params.set("branch_id", query.branchId);
+  const qs = params.toString();
+  return apiGet<SessionSummary[]>(`/sessions${qs ? `?${qs}` : ""}`);
+}
+
+/** One class meeting, with its roster when the person may mark it. */
+export function getSession(id: string): Promise<SessionDetail> {
+  return apiGet<SessionDetail>(`/sessions/${checkedId(id)}`);
+}
+
+/** Unmarked classes and absence streaks. */
+export function getAttendanceAlerts(): Promise<AttendanceAlerts> {
+  return apiGet<AttendanceAlerts>("/attendance/alerts");
+}
+
+/** A student's recent attendance. */
+export function getStudentAttendance(id: string): Promise<StudentAttendance> {
+  return apiGet<StudentAttendance>(`/students/${checkedId(id)}/attendance`);
 }

@@ -10,12 +10,14 @@
 
 /** Top-level API paths the dashboard may reach. Add new ones here. */
 export const ALLOWED_PREFIXES = [
+  "attendance",
   "auth",
   "batches",
   "branches",
   "enrollments",
   "plans",
   "rooms",
+  "sessions",
   "staff",
   "students",
   "summary",

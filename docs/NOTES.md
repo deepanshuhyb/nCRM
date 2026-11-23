@@ -16,6 +16,169 @@ Template:
 
 ---
 
+## 2026-11-23: Sessions are made when someone looks, not ahead of time
+
+**Context:** attendance needs one row per class meeting ("Hip-hop
+Beginners on Monday 23 Nov"), but the timetable only stores "every Monday
+at 18:00".
+
+**What wasn't obvious:** the usual answer is a nightly job that creates
+the next few weeks of sessions. That has two costs. Every change to a
+class's days or times then has to find and repair the future sessions
+already made from the old schedule, and nothing works until a background
+worker is running (we don't have one yet).
+
+**What we did:** `attendance::ensure(from, to)` creates the sessions the
+weekly slots imply, only for dates up to the studio's today, with
+`INSERT … ON CONFLICT DO NOTHING` so calling it twice does nothing. It
+runs when a day is opened, and for the last 7 days whenever the home page
+or the alerts load, so a class nobody opened still shows up as "not
+marked". When a class's schedule is edited, `forget_untouched` deletes its
+sessions from today on that have no marks, no teacher check-in and aren't
+cancelled; they come back from the new slots. A session someone has
+touched is history and stays as it was.
+
+**Consequences:**
+- `GET /sessions` and `GET /summary` can insert rows. That's unusual for
+  a GET, and safe here: the rows are fully decided by the timetable, the
+  caller controls nothing but a date that is checked (today or up to 90
+  days back), and repeating the call changes nothing.
+- There are no future sessions. Booking a place in next week's class, and
+  WhatsApp reminders the evening before, will need them. When that comes,
+  a worker job calls `ensure` a few days ahead and schedule edits use the
+  same "forget untouched" rule; the plan has the item.
+- A class's past is fixed by what the timetable said *on the day someone
+  first looked*. Changing Monday to Tuesday today doesn't rewrite last
+  Monday.
+
+## 2026-11-23: A mark and its credit move together
+
+**Context:** students on a pack pay per class. Marking them present has to
+use one class credit; correcting the mark has to give it back.
+
+**What wasn't obvious:**
+1. *Give back to where?* Credits live in lots (one per pack sold), each
+   with its own expiry and a database trigger that keeps it between zero
+   and its size. "Add one credit back to the student" would have to pick
+   a lot, and could push a different lot over its size or bring an
+   expired one back to life.
+2. *What if they have none?* The student is already in the room. Refusing
+   to save "present" would make the attendance record wrong in order to
+   keep the money record tidy.
+
+**What we did:** the attendance row remembers the lot its credit came from
+(`credit_lot_id`). Changing the mark to absent or excused, removing a
+drop-in, or cancelling the class returns the credit to that same lot with
+a `returned` move; the ledger stays append-only. Marking present again
+spends one again. With no usable credit the mark is saved with
+`owes_credit = true` and the dashboard says so before and after saving.
+The next pack sold (or free credits given) settles what's owed, oldest
+class first, inside the same transaction (`attendance::settle_owed`,
+called from `credits::sell` and `credits::give`). A CHECK constraint says
+a row can't both hold a credit and owe one.
+
+**Consequences:**
+- A pack of 8 bought by someone who owes 2 shows 6 left straight away.
+  The sale's audit entry and the student page make that visible.
+- Everything about one mark happens in one transaction with the session
+  row locked, so a double tap or two phones saving the same class can't
+  spend two credits for one class.
+- "Owes a class" is a debt in classes, not rupees. The fees work will
+  decide whether it also appears as money due.
+
+## 2026-11-23: An instructor can't make a class theirs
+
+**Context:** instructors mark their own classes; owners, managers and the
+front desk mark any class. A session also records who actually taught,
+so a substitute can be set for one day.
+
+**What wasn't obvious:** "the session's teacher may mark it" plus "you can
+set the session's teacher" is a privilege escalation if both are open to
+the same person. An instructor could name themselves the substitute for
+any class, and from then on read its roster and mark it.
+
+**What we did:** one function, `attendance::may_mark`, decides for every
+attendance action: "mark any", or "mark own" and you are the session's
+teacher or the class's usual teacher. Setting a different teacher on a
+session needs "mark any" (`set_teacher` returns `forbidden` otherwise).
+An instructor's only teacher action is checking themselves in; marking a
+teacher absent is the front desk's call too. When `may_mark` fails and the
+person doesn't manage students, the session comes back with counts and
+`roster: null`.
+
+**Consequences:** both the usual teacher and that day's substitute can
+mark, which is what studios expect (the regular teacher often fixes the
+list the next day). Tests cover an instructor trying another teacher's
+class, trying to set themselves as substitute, and trying to cancel.
+
+## 2026-11-23: Counting "missed three in a row" in SQL
+
+**Context:** the alert for students who keep missing one class.
+
+**What wasn't obvious:** a streak isn't a `count(*) … WHERE status =
+'absent'`. It's "going back from the newest mark, how many are absences
+before the first one that isn't". Doing that in Rust means loading every
+mark of every student.
+
+**What we did:** two Postgres features, in `attendance::alerts`:
+- A *window function* gives each row a running total over an ordering:
+  `count(*) FILTER (WHERE status <> 'absent') OVER (ORDER BY date DESC)`
+  is "how many non-absences so far, newest first". The streak is the rows
+  where that running total is still 0.
+- `CROSS JOIN LATERAL (subquery)` runs the subquery once per row on its
+  left, and the subquery may use that row's columns. Think of it as
+  `.map()` in SQL: for each enrollment, compute its streak.
+
+The same lateral pattern produces the per-session counts (expected, came,
+away, not marked) in one query for a whole day instead of one query per
+class.
+
+**Consequences:** an excused absence ends a streak (the studio was told),
+so does coming late. Streaks are per class, not per student: missing
+Hip-hop three times while attending Kathak still raises the alert, for
+Hip-hop.
+
+## 2026-11-23: Saving marks without the list flashing empty
+
+**Context:** the marking screen keeps taps in React state, sends them with
+one Save, then asks Next.js for fresh server data (`router.refresh()`).
+
+**What wasn't obvious:** `router.refresh()` returns immediately; the new
+data arrives a moment later. Clearing the taps right after the save
+showed, for that moment, the old server data with no taps: a full class
+flashed to "0 of 9 came". Keeping a copy of the roster in state instead
+has the opposite problem: it hides what the refresh brings (a drop-in
+just added, a colleague's save).
+
+**What we did:** the component stores only *unsaved taps* and derives
+everything else from the server's roster on every render. After a save,
+`router.refresh()` and `setEdits({})` run inside one `startTransition`
+(React's `useTransition`), so React holds the old screen and commits the
+cleared taps together with the new data. The transition's pending flag
+keeps the buttons disabled meanwhile.
+
+**Consequences:** the rule for forms over server data in this dashboard:
+state holds the user's unsaved input, never a copy of what the server
+sent. `mark-sheet.tsx` is the example to follow.
+
+## 2026-11-23: A "not found" page inside the shell needs its own file
+
+**Context:** opening `/attendance/<bad id>` (or a student or class that
+isn't in this studio) calls `notFound()`.
+
+**What wasn't obvious:** with only `app/not-found.tsx`, Next.js rendered
+that file *inside* the signed-in layout. The file had its own `<main>`
+(right for a bare 404 page), so the page ended up with two `<main>`
+landmarks, one inside the other, which confuses screen readers and is
+invalid HTML.
+
+**What we did:** added `app/(app)/not-found.tsx` without a `<main>`, sized
+to sit in the shell. The top-level one stays for addresses that match no
+page.
+
+**Consequences:** any element that must be unique on a page (`<main>`, the
+skip-link target) belongs in layouts, not in files Next.js may nest.
+
 ## 2026-11-23: Reading a spreadsheet from a stranger
 
 **Context:** importing a studio's existing student list from Excel.

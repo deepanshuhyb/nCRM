@@ -7,8 +7,8 @@ import {
   StudioSwitcher,
   ThemeToggle,
   TopNav,
-  type NavItem,
 } from "@/components/shell-controls";
+import { navFor } from "@/lib/nav";
 import { getMe } from "@/lib/api-server";
 
 /**
@@ -20,15 +20,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
   if (!me.studio) redirect("/choose-studio");
   const theme = (await cookies()).get("ncrm_theme")?.value === "emerald" ? "emerald" : "daylight";
-  const can = new Set(me.studio.capabilities);
-  // Only show what the role can open. The API refuses the rest anyway.
-  const nav: NavItem[] = [
-    { href: "/", label: "Home" },
-    { href: "/classes", label: "Classes" },
-    ...(can.has("manage_students") ? [{ href: "/students", label: "Students" }] : []),
-    ...(can.has("manage_staff") ? [{ href: "/team", label: "Team" }] : []),
-    { href: "/branches", label: "Branches" },
-  ];
+  const nav = navFor(me.studio.capabilities);
 
   return (
     <div className="has-bottom-nav">

@@ -123,6 +123,9 @@ export type Summary = {
   active_team: number;
   classes: number;
   plans: number;
+  classes_today: number;
+  /** Classes in the last week that are over and not fully marked. */
+  unmarked: number;
   /** The studio's date, YYYY-MM-DD. */
   today: string;
 };
@@ -260,3 +263,58 @@ export type ImportPreview = {
 };
 
 export type ImportResult = { added: number; skipped: number };
+
+export type AttendanceStatus = "present" | "late" | "absent" | "excused";
+
+export const ATTENDANCE_LABEL: Record<AttendanceStatus, string> = {
+  present: "Present",
+  late: "Late",
+  absent: "Absent",
+  excused: "Excused",
+};
+
+export type SessionSummary = {
+  id: string;
+  batch_id: string;
+  batch_name: string;
+  branch_id: string;
+  branch_name: string;
+  room_name: string | null;
+  on_date: string;
+  starts_at: string;
+  ends_at: string;
+  status: "scheduled" | "cancelled";
+  cancel_reason: string | null;
+  instructor_id: string | null;
+  instructor_name: string | null;
+  teacher_present: boolean | null;
+  expected: number;
+  came: number;
+  away: number;
+  unmarked: number;
+  ended: boolean;
+};
+
+export type RosterMark = {
+  student_id: string;
+  student_name: string;
+  status: AttendanceStatus | null;
+  drop_in: boolean;
+  pays_with_credits: boolean;
+  credits_left: number;
+  owes_credit: boolean;
+  absences_in_a_row: number;
+};
+
+export type SessionDetail = SessionSummary & { can_mark: boolean; roster: RosterMark[] | null };
+
+export type AttendanceAlerts = {
+  unmarked: SessionSummary[];
+  streaks: { student_id: string; student_name: string; batch_id: string; batch_name: string; absences: number }[];
+};
+
+export type StudentAttendance = {
+  came: number;
+  missed: number;
+  recent: { on_date: string; batch_name: string; status: AttendanceStatus; drop_in: boolean }[];
+};

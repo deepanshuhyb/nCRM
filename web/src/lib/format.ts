@@ -85,3 +85,12 @@ export function addDays(iso: string, days: number): string {
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + days));
   return d.toISOString().slice(0, 10);
 }
+
+/** "2026-11-23" → "Monday 23 Nov". */
+export function formatDay(iso: string): string {
+  const weekday = isoWeekday(iso);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!weekday || !m) return iso;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${WEEKDAY_LONG[weekday - 1]} ${Number(m[3])} ${months[Number(m[2]) - 1]}`;
+}

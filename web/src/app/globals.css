@@ -565,4 +565,40 @@ body {
   }
   .day-toggle input:checked + span { background: var(--pill); color: var(--on-pill); border-color: var(--pill); }
   .day-toggle input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* -------------------------------------------------------- attendance */
+
+  /* One student's mark: four big buttons. The chosen one takes the colour
+     of its meaning: came = the "fine" colour, absent = attention. */
+  .marks {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .marks button {
+    min-height: 44px;
+    padding: 0 6px;
+    border-radius: 10px;
+    border: 1px solid var(--ghost-border);
+    background: var(--ghost-bg);
+    color: var(--soft);
+    font: 600 13px var(--font-sans);
+    cursor: pointer;
+  }
+  .marks button[aria-pressed="true"] { background: var(--pill); color: var(--on-pill); border-color: var(--pill); font-weight: 700; }
+  .marks button[aria-pressed="true"][data-tone="good"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .marks button[aria-pressed="true"][data-tone="attn"] { background: var(--attn-strong); color: var(--bg); border-color: var(--attn-strong); }
+  .marks button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  /* The save bar stays in reach on a long roster. */
+  .save-bar {
+    position: sticky;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    z-index: 10;
+  }
+  /* It floats over the roster, so it is solid: names must not show through. */
+  .glass.save-bar { background: var(--fallback); }
+  @media (min-width: 721px) {
+    .save-bar { bottom: 16px; }
+  }
 }

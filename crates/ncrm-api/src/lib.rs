@@ -11,6 +11,7 @@
 //! - `team`, `students`, `summary`: the team, students with contacts, and
 //!   the home-screen counts.
 
+pub mod attendance;
 pub mod branches;
 pub mod classes;
 pub mod enrollments;
@@ -145,6 +146,19 @@ pub fn router(state: AppState) -> Router {
             "/students/{id}/credits/take-back",
             post(enrollments::take_back),
         )
+        .route("/students/{id}/attendance", get(attendance::for_student))
+        .route("/sessions", get(attendance::day))
+        .route("/sessions/{id}", get(attendance::get))
+        .route("/sessions/{id}/attendance", put(attendance::mark))
+        .route("/sessions/{id}/drop-ins", post(attendance::add_drop_in))
+        .route(
+            "/sessions/{id}/drop-ins/{student_id}",
+            delete(attendance::remove_drop_in),
+        )
+        .route("/sessions/{id}/teacher", put(attendance::set_teacher))
+        .route("/sessions/{id}/cancel", post(attendance::cancel))
+        .route("/sessions/{id}/restore", post(attendance::restore))
+        .route("/attendance/alerts", get(attendance::alerts))
         .route("/rooms", get(classes::list_rooms))
         .route("/rooms/{id}", put(classes::update_room))
         .route("/branches/{id}/rooms", post(classes::create_room))

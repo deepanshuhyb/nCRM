@@ -5,6 +5,7 @@
 //! security. See `docs/TENANCY.md`.
 
 pub mod access;
+pub mod attendance;
 pub mod audit;
 pub mod auth;
 pub mod batches;

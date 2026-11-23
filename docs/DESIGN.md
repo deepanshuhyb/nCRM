@@ -105,6 +105,32 @@ Every block is a link whose accessible name says the class, day, time,
 place, teacher and how full it is, and the same text is the hover title,
 since narrow blocks truncate.
 
+## Marking attendance
+
+Marking happens standing up, on a phone, with a class waiting. So each
+student gets four buttons side by side (Present, Late, Absent, Excused),
+each at least 44px tall, and the chosen one fills in: the "fine" colour
+for Present and Late, the attention colour for Absent, a neutral dark for
+Excused. Colour is never the only signal: the chosen button also carries
+`aria-pressed` and the row count in the heading changes ("14 of 15 came").
+
+"Everyone's here" marks whoever is still blank as present, because in most
+classes most people come; staff then tap the two or three exceptions.
+Nothing is sent until Save. The save bar sticks above the bottom
+navigation and says what Save will do ("3 to save", "2 not marked yet",
+"Saved."). It is solid, not glass: it floats over names and they must not
+show through.
+
+Notes under a name are short and only appear when they matter: "Pays per
+class, 3 credits left", "No credits left: this class will be owed" (in
+the attention colour, before saving, so the front desk can sell a pack on
+the spot), "Missed the last 2".
+
+On the Today page each class is a row with its time, a state tag (Marked,
+"3 not marked" once the class is over, Not started, Cancelled) and a
+meter of marks. An instructor's own classes carry the same accent edge as
+on the timetable.
+
 ## Backdated dates
 
 A join date or class start set earlier than the day it was entered carries
