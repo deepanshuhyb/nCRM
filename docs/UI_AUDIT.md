@@ -80,7 +80,8 @@ and the blocks that mattered were too small for their text.
   lines), how full, then where (the branch when all branches are showing,
   otherwise the room). A line that doesn't fit the block's height is left
   out whole; nothing is sliced through the middle.
-- **Classes that share an hour** sit side by side and are narrow. They
+- **Classes that share an hour** sit side by side. That day's column is
+  made wider than the others, so each still has room for its name. They
   show the start time, the name and a short count ("15/16"). Pointing at
   one, or reaching it with the keyboard, opens it to the full width of the
   day.
@@ -130,11 +131,13 @@ pointed at a real studio.
 
 Not done here; listed so they aren't forgotten.
 
-1. **Side-by-side timetable blocks can still shorten a long name** (it
-   wraps to three lines, then stops). Hover or keyboard focus shows it in
-   full; on a touch-only wide screen the only way to read it is to open
-   the class. A studio with three or more rooms busy at once would be
-   better served by a per-branch default than by narrower lanes.
+1. **A very busy week can still crowd the timetable.** A day with
+   side-by-side classes gets a wider column, which works while only some
+   days have them. With three rooms busy at once on most days (likely on
+   "All branches" for a bigger studio) every column is wide and names
+   wrap to three lines, then stop. Hover or keyboard focus shows a block
+   in full; on a touch-only wide screen the way to read it is to pick a
+   branch. Opening on the person's own branch by default would help.
 2. **Marking is still one row per student with four buttons**, about 85px
    each. Fifteen students is two phone screens. It is easy to tap and hard
    to shrink without making the buttons smaller than a thumb; "Everyone's

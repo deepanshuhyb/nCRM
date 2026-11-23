@@ -96,8 +96,11 @@ sliced through the middle of a line.
   the block, where `overflow: hidden` removes it. The lines are in order
   of importance (time, name, how full, where), so the least important
   goes first, and no line is ever sliced.
-- **Width** is handled with container queries on the day column: under
-  128px the place is dropped, under 104px the end time.
+- **Width** is handled two ways. A day whose classes share an hour gets
+  a wider grid column (`1 + 0.6 × (side-by-side − 1)` shares), because
+  half of a normal column can't hold a word like "Beginners" and the
+  browser was breaking it as "Beginner / s". And container queries on the
+  day column drop the place under 112px and the end time under 96px.
 - Side-by-side blocks open to the full width of the day on hover or
   keyboard focus.
 

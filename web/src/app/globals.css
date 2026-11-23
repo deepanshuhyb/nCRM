@@ -1046,8 +1046,8 @@ body {
   .tt-time { font-weight: 700; }
   /* A narrow window: the start time alone, and no place name. */
   .tt-col { container-type: inline-size; }
-  @container (max-width: 104px) { .tt-end { display: none; } }
-  @container (max-width: 128px) { .tt-where { display: none; } }
+  @container (max-width: 96px) { .tt-end { display: none; } }
+  @container (max-width: 112px) { .tt-where { display: none; } }
   /* Three or more classes side by side: the start time and the name only. */
   .tt-block[data-lanes] { padding: 6px 6px; }
   .tt-block[data-lanes] .tt-name { font-size: 12px; -webkit-line-clamp: 3; }

@@ -122,9 +122,15 @@ export function Timetable({
     placed: placeDay(items.filter((i) => i.slot.weekday === weekday)),
   }));
 
+  // A day where classes share an hour gets a wider column, so the blocks
+  // standing side by side still have room for a word like "Beginners".
+  const columns = days
+    .map((d) => `minmax(0, ${1 + 0.6 * (Math.max(1, ...d.placed.map((p) => p.lanes)) - 1)}fr)`)
+    .join(" ");
+
   return (
     <>
-      <div className="timetable">
+      <div className="timetable" style={{ gridTemplateColumns: `52px ${columns}` }}>
         <span aria-hidden="true" />
         {days.map((d) => (
           <div key={d.weekday} className="tt-head" data-today={d.weekday === todayWeekday ? "" : undefined} aria-hidden="true">

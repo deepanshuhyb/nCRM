@@ -181,7 +181,8 @@ A block's lines are in order of importance: time, name, how full, where.
 A line that doesn't fit is left out whole, never cut through (see NOTES,
 "The timetable drops whole lines"). Classes sharing an hour show the start
 time, the name and a short count, and open to the full width of the day on
-hover or keyboard focus.
+hover or keyboard focus. A day that has them gets a wider column (1.6
+shares of the width for two side by side, 2.2 for three).
 
 Every block is a link whose accessible name says the class, day, time,
 place, teacher and how full it is, and the same text is the hover title,
