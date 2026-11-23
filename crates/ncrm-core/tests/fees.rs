@@ -271,6 +271,7 @@ async fn monthly_fees_wait_until_switched_on_and_come_once_a_month(pool: PgPool)
     let on = FeeSettings {
         fees_from: Some(w.month),
         fee_due_day: 5,
+        fee_reminders: None,
     };
     for who in [&w.desk, &w.teacher] {
         let r = fees::set_settings(&mut t, actor(who), on.clone()).await;
@@ -280,14 +281,17 @@ async fn monthly_fees_wait_until_switched_on_and_come_once_a_month(pool: PgPool)
         FeeSettings {
             fees_from: Some(w.month),
             fee_due_day: 31,
+            fee_reminders: None,
         },
         FeeSettings {
             fees_from: Some(w.month + Duration::days(2)),
             fee_due_day: 5,
+            fee_reminders: None,
         },
         FeeSettings {
             fees_from: Some((w.month - Duration::days(1)).replace_day(1).unwrap()),
             fee_due_day: 5,
+            fee_reminders: None,
         },
     ] {
         let r = fees::set_settings(&mut t, owner, bad).await;
@@ -375,6 +379,7 @@ async fn monthly_fees_wait_until_switched_on_and_come_once_a_month(pool: PgPool)
         FeeSettings {
             fees_from: None,
             fee_due_day: 10,
+            fee_reminders: None,
         },
     )
     .await

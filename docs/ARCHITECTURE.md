@@ -72,6 +72,8 @@ crates/
     src/messaging.rs conversations and messages: the inbox, storing what
                      arrives, the outbox and sending it
     src/bot.rs       what the bot may say to whom: the menu, and AI mode
+    src/reminders.rs fee reminders: who is due one now, once each
+    src/broadcasts.rs one message to a group: who it means, sending, history
     src/import.rs    student lists from .xlsx/.csv: safe reading, preview, commit
     src/validate.rs  shared input checks with plain messages
     src/phone.rs     phone number normalization
@@ -94,6 +96,7 @@ crates/
     src/reports.rs   /reports/..., /batches/{id}/history
     src/inbox.rs     /inbox/..., /messaging/settings
     src/webhook.rs   /webhooks/whatsapp: Meta's deliveries, signature-checked
+    src/broadcasts.rs  /broadcasts, /broadcasts/preview
     src/bin/ncrm-admin.rs  the operator's tool: which WhatsApp number is
                      which studio's; `say` to try the bot in test mode
   ncrm-worker/  background jobs on a timer (see "Background jobs")
@@ -179,6 +182,8 @@ the same pooled connection starts clean. A test proves this. Full rules:
 | `credit_lots` | classes given at once (a pack sold, a drop-in, free classes) | Price copied at sale; `expires_on` is the last usable day. Append-only |
 | `conversations` | one WhatsApp number's thread with the studio | Phone unique per studio. Holds unread count, "needs a person", when the bot is paused until, and when they last wrote (WhatsApp's 24-hour reply window) |
 | `messages` | one WhatsApp message, in or out | Also the outbox: an outgoing row starts `queued`. Only its delivery columns can be updated; the text can't. WhatsApp's own message id is unique per studio, which is what makes a redelivered webhook harmless |
+| `fee_reminders_sent` | "this fee has had this reminder" | One row per fee and step (3 days before, the day, 3 and 7 days late). Written with the message, so no reminder is made twice. Append-only |
+| `broadcasts` | one message sent to a group | The text, who it was for (as chosen and in words), how many people, who sent it. Each person's copy is a row in `messages` pointing back here. Append-only |
 | `credit_moves` | a later change to a lot (used, returned, taken back) | Append-only; a trigger keeps each lot between 0 and its size |
 | `sessions` | one meeting of a class on one date ("Hip-hop Beginners, Monday 23 Nov, 18:00") | Created on demand from the weekly slots, for today and the past only. `scheduled` or `cancelled` (with a reason). Holds who taught that day and whether they were there |
 | `attendance` | one student's mark at one session | `present`, `late`, `absent` or `excused`; `drop_in` for someone who isn't a regular; remembers the credit lot it used, or `owes_credit` when there was none |
@@ -530,10 +535,13 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `POST /inbox/{id}/hand-back` | use inbox | Let the bot answer in this conversation again |
 | `GET /messaging/settings` | use inbox | Connected or not, the number as shown, bot mode, test mode or live, whether AI is available |
 | `PUT /messaging/settings` | manage messaging | `{bot_mode}`: `menu`, `ai` or `off` |
+| `GET /broadcasts` | manage messaging | The latest 30 group messages with how many copies are waiting, sent, delivered, read, failed |
+| `POST /broadcasts/preview` | manage messaging | An audience (`{kind: everyone / branch / batch / owing / students, …}`): how many people it is, a few names, how many students have no contact. Sends nothing |
+| `POST /broadcasts` | manage messaging | `{audience, text}`: one paragraph, up to 600 characters, to at most 1000 people. The same text to the same audience within two minutes is refused (409) |
 | `GET /webhooks/whatsapp` | Meta's verify token | Meta's one-time check that the address is ours |
 | `POST /webhooks/whatsapp` | Meta's signature | Incoming messages and delivery reports. No session; not behind the origin guard |
 | `GET /fees/summary` | manage fees | To collect, overdue, students owing, fee settings; `collected_this_month_paise` is null without "view financials" |
-| `PUT /fees/settings` | manage classes | `{fees_from, fee_due_day}`: start monthly fees from a month (this one or later), or `null` to stop |
+| `PUT /fees/settings` | manage classes | `{fees_from, fee_due_day, fee_reminders?}` (the last switches WhatsApp fee reminders; left out, it is unchanged): start monthly fees from a month (this one or later), or `null` to stop |
 | `GET /fees/dues?branch_id=&limit=&offset=` | manage fees | Students who owe, most overdue first |
 | `GET /students/{id}/fees` | manage fees | Balance (due, overdue, advance), charges and payments |
 | `POST /students/{id}/charges` | manage fees | Add a charge by hand: `{description, amount_paise, due_on?}` |
@@ -600,6 +608,7 @@ do inside it:
 | Manage branches | ✓ | ✓ | | |
 | Use the WhatsApp inbox (read, reply, hand back to the bot) | ✓ | ✓ | ✓ | |
 | Choose how the bot answers | ✓ | ✓ | | |
+| Send one message to a group | ✓ | ✓ | | |
 | Manage staff | ✓ | ✓ | | |
 | Manage students (and put them in classes) | ✓ | ✓ | ✓ | |
 | Manage classes: timetable, prices, free credits | ✓ | ✓ | | |
@@ -704,6 +713,8 @@ Those need "manage classes", a reason, and leave an audit entry.
 | The bot telling a stranger about a student | Facts are read by the sender's number, inside the studio, for that contact's own students only; unknown numbers get the timetable | `bot::facts`, tests in `messaging.rs` and `whatsapp_inbox.rs` |
 | A message tricking the AI into doing something | The AI has no tools and is given only what the sender may already see; the worst case is an odd reply to the sender | `bot.rs` |
 | Parents' numbers and messages collecting in logs | The webhook, the senders and test mode log counts and error numbers, never a number or a message | `webhook.rs`, `messaging::send_queued` |
+| A reminder sent twice, or at 3am, or about a fee from last year | One record per fee and step, written with the message under a studio lock; daytime only by the studio's clock; nothing more than ten days late is picked up | `reminders::queue_due`, `fee_reminders_sent` |
+| A group message sent to the wrong people, or twice | Preview shows the count and names before a second tap; owners and managers only; capped at 1000; an identical send within two minutes is refused | `broadcasts.rs` |
 | Meta retrying a delivery, or two senders at once | WhatsApp's message id is unique per studio; sending claims rows with `SKIP LOCKED` | `messaging::receive`, `send_queued` |
 | Payment references piling up in the audit log | Audit entries carry amounts, methods and receipt numbers, never the reference | `fees.rs` |
 | Error text showing internals | Constraint names and parser messages turned into sentences | `ncrm_core::error`, `extract.rs` |
@@ -759,6 +770,8 @@ else:
 | `WHATSAPP_OTP_TEMPLATE`, `WHATSAPP_TEMPLATE_LANG` | api | The approved authentication template for sign-in codes and its language code. Defaults `ncrm_sign_in_code`, `en`. |
 | `WHATSAPP_API_BASE` | api | Default `https://graph.facebook.com/v21.0`. Must be https. |
 | `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | api | For incoming messages. The first is a random string of ours that Meta echoes once to prove the webhook address; the second is the Meta app's secret, which signs every delivery. Both or neither; with neither, `/webhooks/whatsapp` answers 404. |
+| `WHATSAPP_FEE_REMINDER_TEMPLATE` | worker | Name of the approved template fee reminders go out as. Default `ncrm_fee_reminder`. Wording in `docs/DEPLOY.md`. |
+| `WHATSAPP_BROADCAST_TEMPLATE` | api | Name of the approved template group messages go out as. Default `ncrm_announcement`. |
 | `AI_API_KEY` | api | An Anthropic API key for the bot's AI mode. Unset means a bot set to AI answers with the menu. |
 | `AI_MODEL`, `AI_API_BASE` | api | Defaults `claude-haiku-5-5` and `https://api.anthropic.com`. |
 | `WORKER_INTERVAL_SECS` | worker | Seconds between housekeeping passes. Default 300, minimum 30. |
@@ -846,6 +859,51 @@ anywhere (the database has only its HMAC) and isn't logged.
   without a Meta account. Test mode logs that a message was not sent, not
   what it said or to whom.
 
+### When the studio writes first: fee reminders and group messages
+
+Everything above is a reply. These two reach people who haven't written,
+which WhatsApp only allows through **templates approved in advance**. So
+each is stored with its readable text (for the inbox) *and* the
+template's name and values (for WhatsApp), and leaves through the same
+outbox.
+
+```
+ ncrm-worker, every few minutes            an owner or manager, in the dashboard
+   jobs::fee_reminders                        POST /broadcasts/preview  (who is this?)
+     per studio, in its TenantTx:             POST /broadcasts          (send)
+     reminders::queue_due                       broadcasts::send
+        │                                          │
+        ▼                                          ▼
+   one `queued` template message per contact, in that person's conversation
+        │
+        ▼
+   messaging::send_queued ──▶ graph.facebook.com (template, from the studio's number)
+```
+
+**Fee reminders** (`reminders.rs`). A fee gets at most four: three days
+before it is due, on the day, and three and seven days after. The main
+contact gets *one* message per pass covering every child and everything
+due within three days. Rules: only between 10:00 and 20:00 by the
+studio's clock; never for a student who has left; never for a fee more
+than ten days late when reminders first see it (no backlog on day one);
+each studio can switch them off on the Fees page. Each reminder made is
+recorded per fee and step in the same transaction as its message, under a
+studio-wide lock, so the worker running often, or twice at once, repeats
+nothing.
+
+**Group messages** (`broadcasts.rs`). Staff pick an audience (everyone,
+a branch, a class, students who owe, or students chosen by name) and
+write one paragraph. Each student's main contact gets it once. Because
+it costs money and can't be unsent: only owners and managers may; the
+dashboard first shows how many people and a few names and asks for a
+second tap; one broadcast reaches at most 1000 people; the same text to
+the same audience twice within two minutes is refused.
+
+**The inbox lists only people who have written.** A reminder or a group
+message lands in the conversation of everyone it goes to; those
+conversations stay out of the list until the person replies, and then
+appear with what they are replying to in them.
+
 ### The bot
 
 Each studio chooses a mode (`organizations.bot_mode`): `menu` (default),
@@ -878,6 +936,10 @@ Each studio chooses a mode (`organizations.bot_mode`): `menu` (default),
 2. For every studio, inside that studio's own `TenantTx`: make sure the
    last week's class meetings exist (so an unmarked class is listed even
    if nobody opened the dashboard) and this month's fees are created.
+
+On the same timer it runs `jobs::fee_reminders`: for every studio,
+inside that studio's `TenantTx`, queue the fee reminders that are due
+now (see "When the studio writes first").
 
 It also checks every 20 seconds for WhatsApp messages still waiting to
 go out (`jobs::send_messages`) and sends them. The API sends a message

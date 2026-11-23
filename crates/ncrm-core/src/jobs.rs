@@ -16,8 +16,8 @@ use time::Duration;
 use uuid::Uuid;
 
 use crate::db::TenantTx;
-use crate::whatsapp::MessageSender;
-use crate::{attendance, auth, fees, messaging, Result};
+use crate::whatsapp::{MessageSender, Templates};
+use crate::{attendance, auth, fees, messaging, reminders, Result};
 
 /// Every studio's id. The one cross-studio query jobs make; it returns
 /// ids only.
@@ -68,6 +68,41 @@ pub async fn send_messages(pool: &PgPool, sender: &MessageSender) -> Result<Outb
                 done.failed += sent.failed;
                 done.retrying += sent.retrying;
             }
+            Err(err) => done.errors.push((org_id, err.to_string())),
+        }
+    }
+    Ok(done)
+}
+
+/// What one pass over fee reminders did.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Reminders {
+    pub studios: usize,
+    /// Reminder messages queued across all studios.
+    pub messages: u32,
+    /// Studios whose pass failed, with why.
+    pub errors: Vec<(Uuid, String)>,
+}
+
+/// For every studio: queue the fee reminders that are due now. Each
+/// studio decides for itself (its switch, its clock, its fees) inside its
+/// own `TenantTx`; this only walks the list. Queued reminders leave with
+/// the next `send_messages` pass.
+pub async fn fee_reminders(pool: &PgPool, templates: &Templates) -> Result<Reminders> {
+    let ids = studio_ids(pool).await?;
+    let mut done = Reminders {
+        studios: ids.len(),
+        ..Reminders::default()
+    };
+    for org_id in ids {
+        let pass = async {
+            let mut tx = TenantTx::begin(pool, org_id).await?;
+            let reminded = reminders::queue_due(&mut tx, templates).await?;
+            tx.commit().await?;
+            Ok::<_, crate::Error>(reminded)
+        };
+        match pass.await {
+            Ok(reminded) => done.messages += reminded.messages,
             Err(err) => done.errors.push((org_id, err.to_string())),
         }
     }

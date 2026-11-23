@@ -2,7 +2,7 @@
 add a student (the empty form must complain first), put them in a class, take a
 payment and open the receipt, switch profile tabs, mark a class, add a class,
 search, add a room, open a team editor, answer a parent in the WhatsApp inbox,
-switch the bot off and on, switch theme, sign out.
+switch the bot off and on, message a class, switch fee reminders off and on, switch theme, sign out.
 
 usage:  python3 scripts/ui-audit/flows.py
 
@@ -47,7 +47,9 @@ with sync_playwright() as p:
 
     def join_class():
         pg.get_by_role("button", name="Put in a class").click(); pg.wait_for_timeout(300); shot("put_in_class")
-        pg.get_by_label("Class", exact=True).select_option(index=1)
+        # The first class with room: a full class is listed but can't be chosen.
+        klass = pg.get_by_label("Class", exact=True)
+        klass.select_option(value=klass.locator("option:not([disabled]):not([value=''])").first.get_attribute("value"))
         pay = pg.get_by_label("How they pay")
         opts = pay.locator("option").all_inner_texts(); pay.select_option(index=1 if len(opts) > 1 else 0)
         pg.get_by_role("button", name="Add to class").click()
@@ -159,6 +161,42 @@ with sync_playwright() as p:
         pg.get_by_role("button", name="Menu", exact=True).click(); pg.wait_for_timeout(1200); shot("inbox")
         return f"after switching off: {off.strip()}"
     step("switch the bot off and back to the menu", bot_mode)
+
+    def group_message():
+        pg.goto(B + "/inbox", wait_until="networkidle")
+        pg.get_by_role("link", name="Message a group").click(); pg.wait_for_url(re.compile("/inbox/broadcast"))
+        # Nothing written yet: it says so and doesn't check.
+        pg.get_by_role("button", name="Check who gets it").click()
+        expect(pg.get_by_text("Write the message first.")).to_be_visible()
+        said = f"No class tomorrow, the hall is being painted. ({int(time.time()) % 100000})"
+        pg.get_by_label("Message", exact=True).fill(said)
+        pg.get_by_role("button", name="Class", exact=True).click()
+        pg.get_by_label("Class", exact=True).select_option(index=1)
+        pg.get_by_role("button", name="Check who gets it").click()
+        send = pg.get_by_role("button", name=re.compile(r"^Send to \d+ (person|people)$")); send.wait_for(timeout=15000)
+        shot("broadcast_check")
+        label = send.inner_text()
+        send.click()
+        expect(pg.get_by_text(re.compile(r"^Sent to \d+ (person|people)\."))).to_be_visible(timeout=15000)
+        expect(pg.locator("#sent-title").locator("xpath=ancestor::section").get_by_text(said)).to_be_visible(timeout=15000)
+        pg.wait_for_timeout(1500); pg.reload(wait_until="networkidle"); shot("broadcast_sent")
+        counts = pg.locator("section[aria-labelledby='sent-title'] li").first.locator("p").nth(2).inner_text()
+        return f"{label} | {counts.strip()}"
+    step("message a class, after checking who gets it", group_message)
+
+    def reminders_switch():
+        pg.goto(B + "/fees", wait_until="networkidle")
+        box = pg.locator("details", has_text="WhatsApp reminders")
+        before = box.locator("summary").inner_text().replace("\n", " ")
+        box.locator("summary").click()
+        box.get_by_role("button", name=re.compile("^Turn reminders (off|on)$")).click(); pg.wait_for_timeout(1500)
+        pg.reload(wait_until="networkidle")
+        box = pg.locator("details", has_text="WhatsApp reminders")
+        after = box.locator("summary").inner_text().replace("\n", " ")
+        box.locator("summary").click(); shot("fee_reminders")
+        box.get_by_role("button", name=re.compile("^Turn reminders (off|on)$")).click(); pg.wait_for_timeout(1200)
+        return f"{before.strip()} -> {after.strip()} -> back"
+    step("switch fee reminders off and on again", reminders_switch)
 
     def theme():
         pg.goto(B + "/", wait_until="networkidle")

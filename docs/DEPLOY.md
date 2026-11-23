@@ -174,6 +174,53 @@ Things to know:
   the worker log has Meta's error number (190: token; 131047: outside the
   24 hours; 131026: not on WhatsApp).
 
+### Reminders and group messages
+
+When the studio writes first (a fee reminder, a message to a group),
+WhatsApp requires a **template approved in advance**. Until WhatsApp is
+connected these run in test mode like everything else, and you can see
+exactly what would be sent in the dashboard.
+
+Create two templates in WhatsApp Manager ("Message templates"), in the
+language set by `WHATSAPP_TEMPLATE_LANG`. The body text must have the
+same number of `{{…}}` values in the same order; the words around them
+are yours to adjust.
+
+| Name | Category | Body |
+|---|---|---|
+| `ncrm_fee_reminder` | Utility | `Hi {{1}}, this is {{2}}. Fees for {{3}}: {{4}}. You can pay at the front desk by cash, UPI or card.` |
+| `ncrm_announcement` | Utility, or Marketing if Meta insists | `Hi {{1}}, a message from {{2}}: {{3}} Reply to this chat if you have a question.` |
+
+What goes in: `{{1}}` the contact's name, `{{2}}` the studio's name. For
+the reminder, `{{3}}` is the students ("Aarav and Anya") and `{{4}}` what
+is owed ("₹4,200 to pay, ₹700 of it overdue"). For the announcement,
+`{{3}}` is the message staff typed. When Meta asks for sample values,
+use ones like those.
+
+Things to know:
+
+- **Meta may reject `ncrm_announcement` as too open-ended**, or file it
+  under Marketing, which costs more per message and which people can
+  opt out of. If it won't approve, the fallback is a few specific
+  templates ("class cancelled", "holiday", "event") instead of one
+  general one; that needs a small change here, so say so.
+- **Values can't contain line breaks**, which is why a group message is
+  one paragraph. The dashboard joins lines for you.
+- **People must have agreed to hear from the studio on WhatsApp.** That
+  is Meta's rule, not ours. Giving a number at admission for fee and
+  class messages is the usual basis; say it on the admission form.
+- **New numbers have a daily limit** on how many people they can write
+  to first (it starts low and rises as messages are delivered and not
+  blocked). A group message to more than the limit will show some copies
+  as not delivered.
+- **Fee reminders are on for every studio** unless switched off on its
+  Fees page. They go 3 days before a fee is due, on the day, and 3 and 7
+  days after, between 10:00 and 20:00 studio time, to the student's main
+  contact. Fees already more than ten days late when you go live are not
+  reminded about.
+- If you named the templates differently, set
+  `WHATSAPP_FEE_REMINDER_TEMPLATE` and `WHATSAPP_BROADCAST_TEMPLATE`.
+
 **The bot's AI mode.** A studio's owner chooses Menu, AI or Off in the
 Inbox. AI needs `AI_API_KEY` (an Anthropic API key) in `deploy/.env`;
 without it a bot set to AI answers with the menu. In AI mode, each reply

@@ -11,6 +11,7 @@ import type {
   BatchDetail,
   BatchSummary,
   Branch,
+  Broadcast,
   Conversation,
   Credits,
   DayAttendance,
@@ -236,3 +237,4 @@ export const getClassHistory = (batchId: string): Promise<MeetingCount[]> =>
 export const listInbox = (): Promise<Conversation[]> => apiGet<Conversation[]>("/inbox");
 export const getThread = (id: string): Promise<Thread> => apiGet<Thread>(`/inbox/${encodeURIComponent(id)}`);
 export const getMessagingSettings = (): Promise<MessagingSettings> => apiGet<MessagingSettings>("/messaging/settings");
+export const listBroadcasts = (): Promise<Broadcast[]> => apiGet<Broadcast[]>("/broadcasts");

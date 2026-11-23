@@ -9,7 +9,7 @@ import { getFeesReport, getFeesSummary, getMe, getSummary, listBranches, listDue
 import { addDays, formatDay, formatDayShort, formatPercent, formatRupees } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/types";
 
-import { MonthlyFeesSetup } from "./fee-settings";
+import { FeeReminders, MonthlyFeesSetup } from "./fee-settings";
 
 export const metadata: Metadata = { title: "Fees" };
 
@@ -140,6 +140,8 @@ export default async function FeesPage({ searchParams }: PageProps<"/fees">) {
           {ageing}
         </section>
       </div>
+
+      <FeeReminders on={fees.fee_reminders} feesFrom={fees.fees_from} dueDay={fees.fee_due_day} canChange={can.has("manage_classes")} />
 
       {can.has("manage_classes") ? (
         <MonthlyFeesSetup feesFrom={fees.fees_from} dueDay={fees.fee_due_day} today={today} />

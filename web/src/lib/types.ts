@@ -402,6 +402,8 @@ export type FeesSummary = {
   /** First day of the first month monthly fees are created for; null when off. */
   fees_from: string | null;
   fee_due_day: number;
+  /** Remind the main contact on WhatsApp around the due date. */
+  fee_reminders: boolean;
   due_paise: number;
   overdue_paise: number;
   students_owing: number;
@@ -486,4 +488,40 @@ export type MessagingSettings = {
   /** The server has an AI key, so AI mode can use it. */
   ai_available: boolean;
   waiting: number;
+};
+
+/** Who a broadcast is for. */
+export type Audience =
+  | { kind: "everyone" }
+  | { kind: "branch"; branch_id: string }
+  | { kind: "batch"; batch_id: string }
+  | { kind: "owing" }
+  | { kind: "students"; student_ids: string[] };
+
+export type BroadcastPreview = {
+  /** The audience in words. */
+  label: string;
+  students: number;
+  /** People who would get it: main contacts, each once. */
+  recipients: number;
+  /** Students in the group with no main contact. */
+  without_contact: number;
+  /** A few of the people it would go to. */
+  sample: string[];
+};
+
+export type Broadcast = {
+  id: string;
+  body: string;
+  audience_label: string;
+  recipients: number;
+  sent_by: string;
+  created_at: string;
+  on_date: string;
+  at_time: string;
+  waiting: number;
+  sent: number;
+  delivered: number;
+  read: number;
+  failed: number;
 };

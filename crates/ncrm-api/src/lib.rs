@@ -13,6 +13,7 @@
 
 pub mod attendance;
 pub mod branches;
+pub mod broadcasts;
 pub mod classes;
 pub mod enrollments;
 pub mod error;
@@ -39,7 +40,7 @@ use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use ncrm_core::auth::{AuthConfig, CodeSender};
 use ncrm_core::bot::Ai;
-use ncrm_core::whatsapp::{MessageSender, WebhookConfig};
+use ncrm_core::whatsapp::{MessageSender, Templates, WebhookConfig};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -72,6 +73,8 @@ pub struct AppState {
     pub ai: Option<Ai>,
     /// What the WhatsApp webhook needs. Without it the webhook is closed.
     pub webhook: Option<Arc<WebhookConfig>>,
+    /// The approved templates broadcasts go out as.
+    pub templates: Arc<Templates>,
 }
 
 impl AppState {
@@ -95,6 +98,7 @@ impl AppState {
             messages: MessageSender::Test,
             ai: None,
             webhook: None,
+            templates: Arc::new(Templates::default()),
         }
     }
 
@@ -204,6 +208,8 @@ pub fn router(state: AppState) -> Router {
             "/messaging/settings",
             get(inbox::settings).put(inbox::set_settings),
         )
+        .route("/broadcasts", get(broadcasts::list).post(broadcasts::send))
+        .route("/broadcasts/preview", post(broadcasts::preview))
         // Layers run outside-in for requests: the last one added runs first.
         .layer(middleware::from_fn_with_state(
             state.clone(),

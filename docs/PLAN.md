@@ -80,7 +80,11 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [ ] Earlier months for a studio that joins mid-year (today: added by hand as "old balance")
 - [ ] Razorpay payment links and automatic matching (needs the studio's keys)
 - [ ] Send the receipt on WhatsApp (after phase 3)
-- [ ] Reminder schedules with escalation and fallback
+- [x] Fee reminders on WhatsApp: 3 days before, on the day, 3 and 7 days after, one message per family, per-studio switch (needs the `ncrm_fee_reminder` template approved to go live)
+- [x] Message a group: everyone, a branch, a class, students who owe, or chosen students; preview, then send; delivery counts (needs the `ncrm_announcement` template)
+- [ ] Class reminders (decided against for now: one per class per student is a lot of paid messages)
+- [ ] "Stop" from a parent turning group messages off for them
+- [ ] A studio choosing its own reminder days; SMS fallback
 - [ ] Message wallet metering per studio
 
 ## 5. Analytics

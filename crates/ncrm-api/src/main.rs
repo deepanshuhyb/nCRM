@@ -7,7 +7,7 @@ use ncrm_api::{router, AppState};
 use ncrm_core::auth::{AuthConfig, CodeSender};
 use ncrm_core::bot::{Ai, AiConfig};
 use ncrm_core::db;
-use ncrm_core::whatsapp::{MessageSender, WebhookConfig, WhatsApp, WhatsAppConfig};
+use ncrm_core::whatsapp::{MessageSender, Templates, WebhookConfig, WhatsApp, WhatsAppConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,6 +36,8 @@ async fn main() -> anyhow::Result<()> {
             MessageSender::Test
         }
     };
+    let templates = Templates::from_vars(|name| std::env::var(name).ok())
+        .map_err(|why| anyhow::anyhow!("WhatsApp template settings: {why}"))?;
     let webhook = WebhookConfig::from_vars(|name| std::env::var(name).ok())
         .map_err(|why| anyhow::anyhow!("WhatsApp webhook settings: {why}"))?;
     if webhook.is_none() {
@@ -96,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
     let mut state = AppState::with_security(pool, auth, sender, security);
     state.cookie_secure = cookie_secure;
     state.messages = messages;
+    state.templates = std::sync::Arc::new(templates);
     state.webhook = webhook.map(std::sync::Arc::new);
     state.ai = ai.map(Ai::new);
     if !cookie_secure {

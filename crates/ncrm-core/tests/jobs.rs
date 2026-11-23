@@ -185,6 +185,7 @@ async fn housekeeping_creates_what_is_due_once_and_keeps_studios_apart(pool: PgP
         FeeSettings {
             fees_from: None,
             fee_due_day: 5,
+            fee_reminders: None,
         },
     )
     .await

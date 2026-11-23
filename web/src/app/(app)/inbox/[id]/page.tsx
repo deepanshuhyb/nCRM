@@ -71,10 +71,10 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
             <p className="caption m-0 text-center font-semibold">{d.day === summary.today ? "Today" : dayLabel(d.day)}</p>
             <ol className="m-0 flex list-none flex-col gap-2 p-0">
               {d.messages.map((m) => (
-                <li key={m.id} className="bubble" data-from={m.direction === "in" ? "them" : m.author === "bot" ? "bot" : "us"}>
+                <li key={m.id} className="bubble" data-from={m.direction === "in" ? "them" : m.author === "staff" ? "us" : "bot"}>
                   <p className="m-0 whitespace-pre-wrap break-words">{m.body}</p>
                   <p className="bubble-meta m-0">
-                    {m.direction === "out" ? `${m.author === "bot" ? "Bot" : (m.staff_name ?? "Team")} · ` : ""}
+                    {m.direction === "out" ? `${m.author === "bot" ? "Bot" : m.author === "system" ? "Reminder" : (m.staff_name ?? "Team")} · ` : ""}
                     {m.at_time}
                     {STATUS[m.status] ? ` · ${STATUS[m.status]}` : ""}
                   </p>

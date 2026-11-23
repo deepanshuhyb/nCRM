@@ -44,6 +44,7 @@ services:
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_OTP_TEMPLATE: ${WHATSAPP_OTP_TEMPLATE:-ncrm_sign_in_code}
       WHATSAPP_TEMPLATE_LANG: ${WHATSAPP_TEMPLATE_LANG:-en}
+      WHATSAPP_BROADCAST_TEMPLATE: ${WHATSAPP_BROADCAST_TEMPLATE:-ncrm_announcement}
       # Incoming WhatsApp messages. Both empty means the webhook is closed.
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
@@ -76,6 +77,8 @@ services:
       WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_TEMPLATE_LANG: ${WHATSAPP_TEMPLATE_LANG:-en}
+      # The worker is what makes fee reminders, so it names their template.
+      WHATSAPP_FEE_REMINDER_TEMPLATE: ${WHATSAPP_FEE_REMINDER_TEMPLATE:-ncrm_fee_reminder}
 
   web:
     build:

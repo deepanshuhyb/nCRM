@@ -48,8 +48,8 @@ their results across studios. The current list is in
 
 `organizations` is the one studio table whose row *is* the studio, and
 some of its columns decide things across studios. So `ncrm_app` may update
-only named columns of it (`name`, `timezone`, the fee settings,
-`bot_mode`), not the whole row.
+only named columns of it (`name`, `timezone`, the fee settings including
+`fee_reminders`, `bot_mode`), not the whole row.
 
 The one that matters most is `wa_phone_number_id`, the studio's WhatsApp
 number. An incoming message is routed to whichever studio holds the number

@@ -139,7 +139,7 @@ for port in 8080 3000; do
 done
 
 echo "Building the API (the first build takes a few minutes)..."
-cargo build -q -p ncrm-api
+cargo build -q -p ncrm-api -p ncrm-worker
 
 if [ -n "$phone" ]; then
   ./target/debug/ncrm-dev-seed "$phone" "$name"
@@ -169,6 +169,10 @@ RUN_MIGRATIONS=1 ./target/debug/ncrm-api 2>&1 | sed -u 's/^/[api] /' &
 (cd web && PORT=3000 pnpm "$web_cmd" 2>&1 | sed -u 's/^/[web] /') &
 
 for _ in $(seq 1 60); do port_open 3000 && port_open 8080 && break; sleep 1; done
+# The worker starts once the API has applied the migrations. It makes fee
+# reminders and re-sends WhatsApp messages; every minute here, so you don't
+# wait five to see it work.
+WORKER_INTERVAL_SECS=60 ./target/debug/ncrm-worker 2>&1 | sed -u 's/^/[worker] /' &
 cat <<BANNER
 
   ncrm is running.
@@ -177,6 +181,11 @@ cat <<BANNER
     Sign in:     with the phone number you seeded${phone:+ ($phone)}
     The code:    appears below on a line like
                  [api] [ncrm dev] sign-in code for +91...: 123456
+
+    WhatsApp:    test mode unless .env has the WHATSAPP_ settings: messages
+                 are saved and shown, and reach nobody. Play a parent with
+                 ./target/debug/ncrm-admin whatsapp say rhythm-house "60001 00000" "hi"
+                 (in another terminal, after: set -a; . ./.env; set +a)
 
   No studio yet? Stop this (Ctrl+C) and run:  ./scripts/dev.sh <your phone number> "Your Name"
   Stop everything with Ctrl+C.

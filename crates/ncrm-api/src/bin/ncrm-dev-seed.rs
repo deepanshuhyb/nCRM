@@ -606,6 +606,7 @@ async fn history(pool: &sqlx::PgPool, org_id: Uuid, me: Actor) -> anyhow::Result
         FeeSettings {
             fees_from: Some(month),
             fee_due_day: 5,
+            fee_reminders: None,
         },
     )
     .await?;

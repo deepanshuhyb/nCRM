@@ -16,6 +16,95 @@ Template:
 
 ---
 
+## 2026-11-24: Fee reminders that can't repeat, pile up or wake anyone
+
+**Context:** the owner chose fee reminders only (no class reminders: one
+per class per student is a lot of paid messages): 3 days before a fee is
+due, on the day, 3 and 7 days after, to the main contact.
+
+**What wasn't obvious:**
+- The worker runs every five minutes, and may one day run as two copies.
+  "Is a reminder due?" will be asked hundreds of times a day per fee, and
+  must be answered "yes" exactly once.
+- "Send on the due date" breaks if the worker is down that day: the
+  reminder would simply never happen.
+- The first day reminders exist, a studio may have months of old unpaid
+  fees. Reminding about all of them at once would be a flood, and the
+  first thing families see from the system.
+- A parent with two children, or one child with two fees due together,
+  would get several messages a minute apart.
+- The amount to state isn't obvious. "₹2,500 is due on the 5th" is wrong
+  if ₹5,000 from last month is also unpaid.
+
+**What we did** (`reminders.rs`):
+- A table, `fee_reminders_sent`, has one row per fee and step, unique.
+  The row is written in the same transaction as the message, and each
+  pass first takes a studio-wide lock. So a second pass, or a second
+  worker, sees the row and does nothing.
+- A fee's step is the *latest one reached*, not "is today exactly the
+  day": two days late is still "on the day" until day 3. A worker that
+  was off catches up when it is back, and never sends two steps at once.
+- Only fees between 3 days before and 9 days after their due date are
+  looked at. Anything older is never reminded about.
+- Fees are grouped by contact: one message per person per pass, naming
+  every student involved, with the total of everything those students
+  owe that is due within three days (so old dues are counted in the
+  amount, even though they don't trigger a reminder themselves).
+- Only between 10:00 and 20:00 on the studio's own clock.
+- Students marked "left" are skipped, and a fee whose student has no
+  main contact is recorded as "nobody to tell" so it isn't looked at
+  again every five minutes.
+
+**Consequences:** a fee gets at most four reminders in its life, and a
+family at most one message per pass. The schedule is fixed in code; a
+studio can only switch reminders on or off (Fees page). The tests move a
+fee's due date back a day at a time and check a message is made on
+exactly the four days, and they pick a time zone where it is currently
+afternoon (or 3am) so they pass at any hour.
+
+## 2026-11-24: A group message is a template, one paragraph, and two taps
+
+**Context:** the owner wanted to be able to send something to some
+people: a class, a branch, whoever owes, or a few students by name.
+
+**What wasn't obvious:**
+- WhatsApp only delivers ordinary text to someone who wrote in the last
+  24 hours. A message to a group reaches people who haven't, so it must
+  be a pre-approved *template*, with what staff typed passed in as a
+  value.
+- WhatsApp refuses a template value containing a line break, a tab, or
+  more than four spaces in a row, and refuses the whole message with it.
+  A notice typed as three short lines would fail for every recipient.
+- It costs money per recipient and can't be unsent, and the two easiest
+  mistakes are the wrong group and a double tap.
+- Each recipient's copy has to live somewhere. Putting it in their
+  conversation is right (their reply then has context), but a message to
+  200 people would put 200 conversations at the top of the inbox.
+
+**What we did:**
+- `broadcasts.rs` turns any run of whitespace into one space before
+  storing (`whatsapp::template_value`), and the form says "one
+  paragraph". The database refuses a broadcast body with a line break.
+- Preview and send are separate calls. The dashboard shows "This goes to
+  14 people: …" and only then offers "Send to 14 people". Changing the
+  text or the group removes the button.
+- Sending takes a studio-wide lock, then refuses the same text to the
+  same audience within two minutes. Owners and managers only; at most
+  1000 people per message.
+- Each copy is an ordinary row in `messages` with `broadcast_id` set, so
+  delivery reports update it like any message and the history can count
+  sent, delivered and read.
+- The inbox now lists only conversations where the person has written.
+  Reminders and group messages are in the thread, and the thread shows
+  up when they reply.
+
+**Consequences:** Meta has to approve the two templates before any of
+this reaches a phone, and may judge a general-purpose announcement
+template too open-ended; `docs/DEPLOY.md` has the wording and the
+fallback. There is no opt-out handling yet: if a parent replies "stop",
+a person has to act on it. A recipient with two children in the group
+gets one copy, because recipients are distinct contacts, not students.
+
 ## 2026-11-23: A studio can't choose its own WhatsApp number
 
 **Context:** each studio gets its own WhatsApp number. An incoming

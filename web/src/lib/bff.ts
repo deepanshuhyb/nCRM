@@ -14,6 +14,7 @@ export const ALLOWED_PREFIXES = [
   "auth",
   "batches",
   "branches",
+  "broadcasts",
   "charges",
   "enrollments",
   "fees",

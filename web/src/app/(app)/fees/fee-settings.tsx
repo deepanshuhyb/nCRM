@@ -129,3 +129,54 @@ export function MonthlyFeesSetup({ feesFrom, dueDay, today }: { feesFrom: string
     </details>
   );
 }
+
+/**
+ * WhatsApp fee reminders: on or off for the whole studio. The schedule
+ * itself is fixed (3 days before, on the day, 3 and 7 days after) so
+ * that every family is treated the same and nobody has to tune it.
+ */
+export function FeeReminders({ on, feesFrom, dueDay, canChange }: { on: boolean; feesFrom: string | null; dueDay: number; canChange: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function set(next: boolean) {
+    setError(null);
+    setBusy(true);
+    try {
+      // The other two settings are sent back as they are: this endpoint
+      // saves all three together.
+      await apiSend("PUT", "/fees/settings", { fees_from: feesFrom, fee_due_day: dueDay, fee_reminders: next });
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <details className="panel disclosure">
+      <summary className="flex min-h-[56px] items-center gap-2 px-6 font-semibold">
+        WhatsApp reminders
+        <span className={on ? "tag tag-good" : "tag tag-quiet"}>{on ? "On" : "Off"}</span>
+      </summary>
+      <div className="flex flex-col gap-3 px-6 pb-6">
+        <p className="soft m-0 max-w-[68ch] text-sm">
+          {on ? "The" : "When on, the"} student&apos;s main contact gets a WhatsApp message 3 days before a fee is due, on the day, and 3 and 7 days after. One
+          message covers everything a family owes. It stops when the fee is paid, and nobody who has left is reminded.
+        </p>
+        {canChange ? (
+          <button type="button" className={`btn self-start ${on ? "btn-ghost" : "btn-primary"}`} disabled={busy} onClick={() => set(!on)}>
+            {busy ? "Saving…" : on ? "Turn reminders off" : "Turn reminders on"}
+          </button>
+        ) : (
+          <p className="caption m-0">The owner or a manager can change this.</p>
+        )}
+        <p role="alert" className="field-error m-0 empty:hidden">
+          {error}
+        </p>
+      </div>
+    </details>
+  );
+}

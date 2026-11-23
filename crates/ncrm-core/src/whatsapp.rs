@@ -509,6 +509,75 @@ pub fn parse_webhook(body: &serde_json::Value) -> Vec<WebhookEvent> {
     events
 }
 
+/// The approved templates a studio's own messages use when it writes
+/// first. WhatsApp delivers ordinary text only within 24 hours of the
+/// person's last message; a reminder or a broadcast reaches people who
+/// haven't written, so it has to be a template Meta has approved.
+///
+/// The names come from the environment because templates are created in
+/// Meta's console, by whoever owns the WhatsApp Business account. The
+/// wording each must have is in docs/DEPLOY.md.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Templates {
+    /// `WHATSAPP_FEE_REMINDER_TEMPLATE`. Four values: the contact's name,
+    /// the studio, the students, and what is owed.
+    pub fee_reminder: String,
+    /// `WHATSAPP_BROADCAST_TEMPLATE`. Three values: the contact's name,
+    /// the studio, and the message.
+    pub broadcast: String,
+}
+
+impl Default for Templates {
+    fn default() -> Self {
+        Templates {
+            fee_reminder: "ncrm_fee_reminder".into(),
+            broadcast: "ncrm_announcement".into(),
+        }
+    }
+}
+
+impl Templates {
+    pub fn from_vars(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
+        let default = Templates::default();
+        let name = |var: &str, fallback: String| -> Result<String, String> {
+            let Some(value) = get(var)
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+            else {
+                return Ok(fallback);
+            };
+            // Meta's own rule for template names.
+            if value.len() > 100
+                || !value
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+            {
+                return Err(format!(
+                    "{var} must be a template name: lowercase letters, digits and underscores"
+                ));
+            }
+            Ok(value)
+        };
+        Ok(Templates {
+            fee_reminder: name("WHATSAPP_FEE_REMINDER_TEMPLATE", default.fee_reminder)?,
+            broadcast: name("WHATSAPP_BROADCAST_TEMPLATE", default.broadcast)?,
+        })
+    }
+}
+
+/// Make text safe to put in a template's placeholder. WhatsApp refuses a
+/// value containing a line break, a tab, or more than four spaces in a
+/// row, and the whole message with it. So: every run of whitespace
+/// becomes one space, and the result is cut to `max` characters.
+pub fn template_value(text: &str, max: usize) -> String {
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(max)
+        .collect()
+}
+
 /// How studio messages leave the server.
 ///
 /// `Test` is what runs when WhatsApp isn't configured: messages are
@@ -715,5 +784,30 @@ mod tests {
             "messages": [{ "from": "919811100001", "id": "w", "type": "text", "text": { "body": "x" } }]
         }}]}]}))
         .is_empty());
+    }
+
+    #[test]
+    fn template_values_have_no_line_breaks_or_runs_of_spaces() {
+        assert_eq!(
+            template_value("  Class is off\ttomorrow.\n\nSee     you  Monday ", 100),
+            "Class is off tomorrow. See you Monday"
+        );
+        assert_eq!(template_value("abcdef", 3), "abc");
+        assert_eq!(template_value(" \n ", 10), "");
+    }
+
+    #[test]
+    fn template_names_default_and_are_checked() {
+        assert_eq!(
+            Templates::from_vars(|_| None).unwrap(),
+            Templates::default()
+        );
+        let named = Templates::from_vars(|k| {
+            (k == "WHATSAPP_BROADCAST_TEMPLATE").then(|| "studio_news_2".to_string())
+        })
+        .unwrap();
+        assert_eq!(named.broadcast, "studio_news_2");
+        assert_eq!(named.fee_reminder, "ncrm_fee_reminder");
+        assert!(Templates::from_vars(|_| Some("Fee Reminder".into())).is_err());
     }
 }

@@ -229,6 +229,14 @@ every 12 seconds while it is visible (`keep-fresh.tsx`): no socket. When
 a reply can't be sent (WhatsApp's 24 hours have passed), the form is
 replaced by the reason, not disabled without a word.
 
+**Messaging a group** is two steps on one screen, because it costs money
+and can't be undone. First "Check who gets it", which answers with a
+count and a few names ("This goes to 14 people: …") and any students who
+will be missed. Only then does the green button appear, and it says the
+number: "Send to 14 people". Changing the words or the group takes the
+button away again. Past messages list their counts in words ("15 of 15
+sent, 12 delivered"), not as coloured dots.
+
 ## Money
 
 Amounts are in the display face with tabular figures, formatted the

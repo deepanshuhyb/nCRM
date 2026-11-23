@@ -204,6 +204,8 @@ pub struct FeesSummary {
     /// Monthly fees are created from this month on. `None`: switched off.
     pub fees_from: Option<Date>,
     pub fee_due_day: i16,
+    /// Remind the main contact on WhatsApp around the due date.
+    pub fee_reminders: bool,
     pub due_paise: i64,
     pub overdue_paise: i64,
     pub students_owing: i64,
@@ -216,6 +218,9 @@ pub struct FeeSettings {
     /// First day of the first month to charge, or `None` to stop.
     pub fees_from: Option<Date>,
     pub fee_due_day: i16,
+    /// Whether to send fee reminders on WhatsApp. Left out: unchanged.
+    #[serde(default)]
+    pub fee_reminders: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -528,12 +533,17 @@ pub async fn set_settings(
             ));
         }
     }
-    sqlx::query("UPDATE organizations SET fees_from = $2, fee_due_day = $3 WHERE id = $1")
-        .bind(tx.org_id())
-        .bind(settings.fees_from)
-        .bind(settings.fee_due_day)
-        .execute(tx.conn())
-        .await?;
+    sqlx::query(
+        "UPDATE organizations
+            SET fees_from = $2, fee_due_day = $3, fee_reminders = coalesce($4, fee_reminders)
+          WHERE id = $1",
+    )
+    .bind(tx.org_id())
+    .bind(settings.fees_from)
+    .bind(settings.fee_due_day)
+    .bind(settings.fee_reminders)
+    .execute(tx.conn())
+    .await?;
     audit::record(
         tx,
         NewAuditEntry {
@@ -544,6 +554,7 @@ pub async fn set_settings(
             detail: json!({
                 "fees_from": settings.fees_from.map(|d| d.to_string()),
                 "fee_due_day": settings.fee_due_day,
+                "fee_reminders": settings.fee_reminders,
             }),
         },
     )
@@ -1072,11 +1083,12 @@ pub async fn summary(tx: &mut TenantTx, actor: Actor) -> Result<FeesSummary> {
     actor.require(Capability::ManageFees)?;
     ensure_current_month(tx).await?;
     let today = tx.studio_today().await?;
-    let (fees_from, fee_due_day): (Option<Date>, i16) =
-        sqlx::query_as("SELECT fees_from, fee_due_day FROM organizations WHERE id = $1")
-            .bind(tx.org_id())
-            .fetch_one(tx.conn())
-            .await?;
+    let (fees_from, fee_due_day, fee_reminders): (Option<Date>, i16, bool) = sqlx::query_as(
+        "SELECT fees_from, fee_due_day, fee_reminders FROM organizations WHERE id = $1",
+    )
+    .bind(tx.org_id())
+    .fetch_one(tx.conn())
+    .await?;
     let (due_paise, overdue_paise, students_owing) = totals(tx, today).await?;
     let collected_this_month_paise = if actor.role.can(Capability::ViewFinancials) {
         let sum: i64 = sqlx::query_scalar(
@@ -1094,6 +1106,7 @@ pub async fn summary(tx: &mut TenantTx, actor: Actor) -> Result<FeesSummary> {
     Ok(FeesSummary {
         fees_from,
         fee_due_day,
+        fee_reminders,
         due_paise,
         overdue_paise,
         students_owing,

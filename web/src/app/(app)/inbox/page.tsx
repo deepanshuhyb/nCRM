@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { NotAllowed } from "@/components/not-allowed";
 import { TravelLink, Travels } from "@/components/travel";
@@ -30,6 +31,13 @@ export default async function InboxPage() {
             : waiting > 0
               ? `${waiting} ${waiting === 1 ? "conversation is" : "conversations are"} waiting for a person.`
               : "Nobody is waiting. The bot is answering what it can."
+        }
+        actions={
+          studio.capabilities.includes("manage_messaging") ? (
+            <Link href="/inbox/broadcast" className="btn btn-ghost">
+              Message a group
+            </Link>
+          ) : null
         }
       />
 

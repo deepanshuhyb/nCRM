@@ -13,7 +13,7 @@
 use std::time::Duration;
 
 use anyhow::Context;
-use ncrm_core::whatsapp::{MessageSender, WhatsApp, WhatsAppConfig};
+use ncrm_core::whatsapp::{MessageSender, Templates, WhatsApp, WhatsAppConfig};
 use ncrm_core::{db, jobs};
 
 /// Seconds between checks of the WhatsApp outbox.
@@ -48,6 +48,15 @@ async fn main() -> anyhow::Result<()> {
         "ncrm-worker started"
     );
 
+    let templates = Templates::from_vars(|name| std::env::var(name).ok())
+        .map_err(|why| anyhow::anyhow!("WhatsApp template settings: {why}"))?;
+    // Half a minute behind housekeeping, at the same pace.
+    let mut reminders = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_secs(30),
+        Duration::from_secs(every),
+    );
+    reminders.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
     // Messages are checked far more often than housekeeping runs: someone
     // is waiting for them.
     let mut outbox = tokio::time::interval(Duration::from_secs(OUTBOX_SECS));
@@ -76,6 +85,19 @@ async fn main() -> anyhow::Result<()> {
                 // Usually the database being away for a moment; try again
                 // on the next tick.
                 Err(err) => tracing::error!(%err, "housekeeping pass failed"),
+            },
+            // Fee reminders ride on the same timer, after housekeeping has
+            // made sure this month's fees exist.
+            _ = reminders.tick() => match jobs::fee_reminders(&pool, &templates).await {
+                Ok(done) => {
+                    for (org_id, why) in &done.errors {
+                        tracing::error!(%org_id, why, "fee reminders failed for a studio");
+                    }
+                    if done.messages > 0 {
+                        tracing::info!(messages = done.messages, "fee reminders queued");
+                    }
+                }
+                Err(err) => tracing::error!(%err, "fee reminder pass failed"),
             },
             _ = outbox.tick() => match jobs::send_messages(&pool, &sender).await {
                 Ok(done) => {

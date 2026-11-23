@@ -168,10 +168,17 @@ const CONVERSATION_SELECT: &str = "
 // ------------------------------------------------------------------ inbox
 
 /// Conversations, the ones waiting for a person first, then the newest.
+///
+/// Only people who have written to the studio are listed. A reminder or
+/// a broadcast puts a message in the conversation of everyone it goes
+/// to, and listing all of those would bury the handful of people who
+/// actually wrote. The moment someone replies, their conversation
+/// appears, with the reminder they are replying to in it.
 pub async fn inbox(tx: &mut TenantTx, actor: Actor) -> Result<Vec<Conversation>> {
     actor.require(Capability::UseInbox)?;
     let rows = sqlx::query_as::<_, Conversation>(sqlx::AssertSqlSafe(format!(
         "{CONVERSATION_SELECT}
+          WHERE c.last_inbound_at IS NOT NULL
           ORDER BY c.needs_staff DESC, c.last_message_at DESC
           LIMIT 200"
     )))
@@ -260,6 +267,52 @@ pub async fn hand_back(tx: &mut TenantTx, actor: Actor, id: Uuid) -> Result<Thre
         return Err(Error::NotFound);
     }
     thread(tx, actor, id).await
+}
+
+/// Queue a template message to `phone`: how a studio writes first (a
+/// reminder, a broadcast). `body` is the message as the person will read
+/// it, kept for the inbox; `params` fill the template's placeholders.
+///
+/// If they have never written, their conversation is created so the
+/// message has somewhere to live. An existing conversation isn't moved
+/// up the inbox: a reminder isn't something they said.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn queue_template(
+    tx: &mut TenantTx,
+    phone: &str,
+    author: Author,
+    staff_id: Option<Uuid>,
+    body: &str,
+    template: &str,
+    params: &[String],
+    broadcast_id: Option<Uuid>,
+) -> Result<Uuid> {
+    let conversation: Uuid = sqlx::query_scalar(
+        "INSERT INTO conversations (org_id, phone) VALUES ($1, $2)
+         ON CONFLICT (org_id, phone) DO UPDATE SET phone = EXCLUDED.phone
+         RETURNING id",
+    )
+    .bind(tx.org_id())
+    .bind(phone)
+    .fetch_one(tx.conn())
+    .await?;
+    let id = sqlx::query_scalar(
+        "INSERT INTO messages (org_id, conversation_id, direction, author, staff_id, body,
+                               template, template_params, status, broadcast_id)
+         VALUES ($1, $2, 'out', $3, $4, $5, $6, $7, 'queued', $8)
+         RETURNING id",
+    )
+    .bind(tx.org_id())
+    .bind(conversation)
+    .bind(author)
+    .bind(staff_id)
+    .bind(body)
+    .bind(template)
+    .bind(serde_json::json!(params))
+    .bind(broadcast_id)
+    .fetch_one(tx.conn())
+    .await?;
+    Ok(id)
 }
 
 async fn insert_outgoing(
