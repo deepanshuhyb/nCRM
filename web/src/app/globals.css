@@ -402,6 +402,7 @@ body {
   .tag-attn { background: var(--attn-tint); color: var(--attn-strong); }
   .tag-good { background: var(--good); color: var(--good-text); }
   .tag-quiet { background: var(--track); color: var(--ink); }
+  .tag-dark { background: var(--pill); color: var(--on-pill); }
   .hero .tag-quiet { color: var(--hero-ink); }
 
   .segmented {
@@ -1150,6 +1151,36 @@ body {
   .marks button[aria-pressed="true"][data-tone="good"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   .marks button[aria-pressed="true"][data-tone="attn"] { background: var(--attn-strong); color: var(--bg); border-color: var(--attn-strong); }
   .marks button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  /* A conversation. Theirs sit left on the row colour; ours sit right.
+     The bot's are outlined rather than filled, so at a glance you can
+     tell what a person wrote from what was automatic. The label under
+     each says who, so colour is never the only signal. */
+  .bubble {
+    max-width: min(82%, 520px);
+    padding: 9px 13px;
+    border-radius: 16px;
+    font-size: 15px;
+    line-height: 1.4;
+  }
+  .bubble[data-from="them"] {
+    align-self: flex-start;
+    border-bottom-left-radius: 6px;
+    background: var(--row);
+    border: 1px solid var(--row-border);
+  }
+  .bubble[data-from="us"] {
+    align-self: flex-end;
+    border-bottom-right-radius: 6px;
+    background: var(--pill);
+    color: var(--on-pill);
+  }
+  .bubble[data-from="bot"] {
+    align-self: flex-end;
+    border-bottom-right-radius: 6px;
+    border: 1px solid var(--line-strong);
+  }
+  .bubble-meta { margin-top: 3px; font-size: 12px; opacity: 0.72; font-variant-numeric: tabular-nums; }
 
   /* A receipt is paper: solid, no blur, so it prints as it looks. */
   .receipt {

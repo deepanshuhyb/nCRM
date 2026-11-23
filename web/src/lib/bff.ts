@@ -17,6 +17,8 @@ export const ALLOWED_PREFIXES = [
   "charges",
   "enrollments",
   "fees",
+  "inbox",
+  "messaging",
   "payments",
   "plans",
   "reports",

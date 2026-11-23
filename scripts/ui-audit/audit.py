@@ -25,6 +25,8 @@ receipt = sql("select id from payments order by receipt_no limit 1")
 PATHS = ["/", "/attendance", "/students", "/students/new", f"/students/{student}", f"/students/{student}#fees",
          f"/students/{student}#attendance", f"/students/{student}#details", "/students/import", "/fees",
          "/classes", "/classes/new", f"/classes/{klass}", "/classes/plans", "/team", "/branches", "/more"]
+chat = sql("select id from conversations order by last_message_at desc limit 1")
+PATHS += ["/inbox"] + ([f"/inbox/{chat}"] if chat else [])
 if session: PATHS.insert(2, f"/attendance/{session}")
 if receipt: PATHS.insert(-6, f"/fees/receipts/{receipt}")
 
@@ -49,7 +51,8 @@ CHECK = r"""
     const fs = parseFloat(s.fontSize);
     if (fs < 12) out.push(['tiny-text', `${label(e)} is ${fs}px`]);
     if (e.scrollWidth > e.clientWidth + 1 && ['hidden', 'clip'].includes(s.overflowX) && s.textOverflow !== 'ellipsis') out.push(['clipped-text', label(e)]);
-    if (s.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1) out.push(['cut-short', label(e)]);
+    /* A conversation's one-line preview in the inbox list is meant to be cut. */
+    if (s.textOverflow === 'ellipsis' && e.scrollWidth > e.clientWidth + 1 && !e.closest('a[href^="/inbox/"]')) out.push(['cut-short', label(e)]);
     const fg = parse(s.color); if (!fg) continue; const bg = bgOf(e);
     const f2 = [fg[0]*fg[3] + bg[0]*(1-fg[3]), fg[1]*fg[3] + bg[1]*(1-fg[3]), fg[2]*fg[3] + bg[2]*(1-fg[3])];
     const L1 = lum(f2), L2 = lum(bg), ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);

@@ -1,7 +1,8 @@
 """Walk the main jobs on a phone-sized screen as the demo manager and say which steps work:
 add a student (the empty form must complain first), put them in a class, take a
 payment and open the receipt, switch profile tabs, mark a class, add a class,
-search, add a room, open a team editor, switch theme, sign out.
+search, add a room, open a team editor, answer a parent in the WhatsApp inbox,
+switch the bot off and on, switch theme, sign out.
 
 usage:  python3 scripts/ui-audit/flows.py
 
@@ -10,7 +11,7 @@ time it runs. See common.py for what it needs.
 """
 import re, time
 from playwright.sync_api import sync_playwright, expect
-from common import URL as B, OUT, MANAGER, allow_more_codes, sign_in
+from common import URL as B, OUT, MANAGER, allow_more_codes, database_url, sign_in
 
 allow_more_codes()
 results = []
@@ -96,7 +97,7 @@ with sync_playwright() as p:
         pg.goto(B + "/classes/new", wait_until="networkidle")
         pg.get_by_label("Name", exact=True).fill(f"Test Class {int(time.time()) % 1000}")
         pg.get_by_label("Branch", exact=True).select_option(index=1); pg.wait_for_timeout(300)
-        pg.get_by_label("Room", exact=True).select_option(index=1)
+        # No room: a room can't hold two classes at once, and this script runs more than once.
         pg.locator("label.day-toggle", has_text="Sat").click()
         pg.wait_for_timeout(200); shot("new_class")
         pg.get_by_role("button", name="Add class").click()
@@ -124,6 +125,40 @@ with sync_playwright() as p:
         pg.locator("summary").first.click(); pg.wait_for_timeout(300); shot("team_edit")
         return f"{pg.locator('summary').count()} editable people"
     step("open a team member's editor", team)
+
+    def inbox():
+        # A parent writes (through the same code the webhook uses), the bot
+        # doesn't understand, and the manager answers from the inbox.
+        import subprocess, pathlib
+        root = pathlib.Path(__file__).resolve().parents[2]
+        said = f"Is the studio open on the 26th? ({int(time.time()) % 100000})"
+        done = subprocess.run([str(root / "target/debug/ncrm-admin"), "whatsapp", "say", "rhythm-house", "60001 00003", said],
+                              capture_output=True, text=True, env={**__import__("os").environ, "DATABASE_URL": database_url()})
+        assert done.returncode == 0, done.stderr[-200:]
+        pg.goto(B + "/inbox", wait_until="networkidle")
+        row = pg.locator("a.row", has_text="Needs you").first
+        row.click(); pg.wait_for_url(re.compile(r"/inbox/[0-9a-f-]{36}"))
+        expect(pg.get_by_text(said)).to_be_visible(timeout=10000)
+        pg.get_by_label(re.compile("^Reply to")).fill("Yes, we're open as usual.")
+        pg.get_by_role("button", name="Send on WhatsApp").click()
+        expect(pg.locator(".bubble[data-from='us']", has_text="Yes, we're open as usual.").last).to_be_visible(timeout=15000)
+        pg.wait_for_timeout(1500); pg.reload(wait_until="networkidle"); shot("inbox_thread")
+        status = pg.locator(".bubble[data-from='us'] .bubble-meta").last.inner_text()
+        pg.get_by_role("button", name="Hand back to the bot").click(); pg.wait_for_timeout(1200)
+        gone = pg.get_by_role("button", name="Hand back to the bot").count() == 0
+        return f"reply shown: {status.strip()} | handed back: {gone}"
+    step("answer a parent in the inbox", inbox)
+
+    def bot_mode():
+        pg.goto(B + "/inbox", wait_until="networkidle")
+        pg.locator("summary", has_text="The bot").click()
+        pg.get_by_role("button", name="Off", exact=True).click(); pg.wait_for_timeout(1200)
+        pg.reload(wait_until="networkidle")
+        off = pg.locator("summary", has_text="The bot").inner_text().replace("\n", " ")
+        pg.locator("summary", has_text="The bot").click()
+        pg.get_by_role("button", name="Menu", exact=True).click(); pg.wait_for_timeout(1200); shot("inbox")
+        return f"after switching off: {off.strip()}"
+    step("switch the bot off and back to the menu", bot_mode)
 
     def theme():
         pg.goto(B + "/", wait_until="networkidle")

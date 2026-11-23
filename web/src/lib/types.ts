@@ -13,7 +13,9 @@ export type Capability =
   | "mark_any_attendance"
   | "mark_own_attendance"
   | "view_financials"
-  | "manage_billing";
+  | "manage_billing"
+  | "use_inbox"
+  | "manage_messaging";
 
 export type Membership = {
   org_id: string;
@@ -130,6 +132,8 @@ export type Summary = {
   /** Fees still to collect; null for roles that don't handle fees. */
   dues_paise: number | null;
   students_owing: number | null;
+  /** WhatsApp conversations waiting for a person; null without the inbox. */
+  inbox_waiting: number | null;
   /** The studio's date, YYYY-MM-DD. */
   today: string;
 };
@@ -428,3 +432,58 @@ export type FeesReport = {
   collection: { charged_paise: number; collected_paise: number; days: { date: string; collected_paise: number }[] } | null;
 };
 export type MeetingCount = { on_date: string; starts_at: string; status: "scheduled" | "cancelled"; came: number; away: number };
+
+// ---------------------------------------------------------------- WhatsApp
+
+export type BotMode = "off" | "menu" | "ai";
+
+export type Conversation = {
+  id: string;
+  /** With the plus: "+919811100001". */
+  phone: string;
+  /** The studio's own name for this number, when it is a contact. */
+  contact_name: string | null;
+  /** The name they use on WhatsApp. Shown only when we have no contact. */
+  profile_name: string | null;
+  /** Their students' names, comma-separated. */
+  students: string | null;
+  last_message_at: string;
+  /** That moment on the studio's calendar (YYYY-MM-DD) and clock ("18:05"). */
+  last_on: string;
+  last_at: string;
+  preview: string | null;
+  unread: number;
+  /** The bot handed this to staff, or didn't understand. */
+  needs_staff: boolean;
+  /** Staff are answering; the bot stays out. */
+  bot_paused: boolean;
+  /** WhatsApp only delivers a reply within 24 hours of their last message. */
+  can_reply: boolean;
+};
+
+export type ChatMessage = {
+  id: string;
+  direction: "in" | "out";
+  author: "contact" | "bot" | "staff" | "system";
+  staff_name: string | null;
+  body: string;
+  status: "received" | "queued" | "sending" | "sent" | "delivered" | "read" | "failed";
+  created_at: string;
+  /** The studio's date (YYYY-MM-DD) and clock time ("18:05") for it. */
+  on_date: string;
+  at_time: string;
+};
+
+export type Thread = Conversation & { messages: ChatMessage[] };
+
+export type MessagingSettings = {
+  /** The studio has a WhatsApp number. */
+  connected: boolean;
+  display_phone: string | null;
+  bot_mode: BotMode;
+  /** Messages really go out. False means test mode. */
+  live: boolean;
+  /** The server has an AI key, so AI mode can use it. */
+  ai_available: boolean;
+  waiting: number;
+};

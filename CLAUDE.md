@@ -35,9 +35,16 @@ Rust and Postgres internals: explain the why, not only the what.
   touch studio data take `&mut TenantTx`.
 - New tables follow the checklist in `docs/TENANCY.md`; the guard test
   `every_table_is_protected_by_row_level_security` must keep passing.
-- Cross-studio queries live only in `ncrm_core::auth` (sign-in) and,
-  later, clearly named worker jobs. Each one is documented in
-  `docs/ARCHITECTURE.md`.
+- Cross-studio queries live only in `ncrm_core::auth` (sign-in), clearly
+  named worker jobs in `ncrm_core::jobs`, `messaging::studio_for_number`
+  (which studio an incoming WhatsApp message is for), and the operator's
+  `ncrm-admin` tool. Each one is documented in `docs/ARCHITECTURE.md`.
+- A studio's WhatsApp number is set only with `ncrm-admin`, never from
+  the dashboard or the API (see `docs/TENANCY.md`).
+- Never log a parent's or student's phone number or the text of a
+  message. Log counts, ids and error numbers.
+- The bot only reads. Don't give it, or the AI behind it, anything that
+  changes data, or facts about anyone but the sender's own students.
 - Handlers check the role with `staff.require(Capability::…)` before
   doing anything.
 - Never log or store sign-in codes or session tokens in the clear. The

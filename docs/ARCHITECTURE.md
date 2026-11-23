@@ -20,23 +20,26 @@ travels through it. Things marked *(planned)* are designed but not built.
                                             │ (cookie, Origin, X-Real-IP)
                          ┌──────────────────▼────────────────────────┐        ┌───────────────────┐
   Meta WhatsApp ────────▶│ ncrm-api (Rust, Axum)                     │◀──────▶│ PostgreSQL 16     │
-  Razorpay ─────────────▶│ webhooks (planned)                        │  SQL   │  public: studio   │
-                         └───────────────────────────────────────────┘        │    data, RLS      │
-                                                                              │  platform:        │
-                         ┌───────────────────────────────────────────┐        │    sign-in data   │
-                         │ ncrm-worker (Rust)                        │◀──────▶│  jobs + outbox    │
-                         │ reminders, sends, summaries (planned)     │  SQL   │  (planned)        │
+  (signed deliveries     │  /webhooks/whatsapp: the one path nginx   │  SQL   │  public: studio   │
+   to one path)          │  passes straight to the API               │        │    data, RLS      │
+                         └───────┬───────────────────────────────────┘        │  platform:        │
+                                 │ HTTPS out: WhatsApp Cloud API,             │    sign-in data   │
+                                 │ and the AI provider (bot's AI mode)        │  messages table   │
+                         ┌───────┴───────────────────────────────────┐        │    is the outbox  │
+                         │ ncrm-worker (Rust)                        │◀──────▶│                   │
+                         │ upkeep; re-sends queued WhatsApp messages │  SQL   │                   │
                          └─────────────────────┬─────────────────────┘        └───────────────────┘
-                                               │ HTTPS (planned)
+                                               │ HTTPS out
                                                ▼
-                                    WhatsApp Cloud API, SMS fallback
+                                       WhatsApp Cloud API
 ```
 
 | Process | What it does | Talks to |
 |---|---|---|
 | Dashboard (`web/`) | The owner and staff interface. Renders pages on the server and forwards `/api/*` calls to the API. Holds no data and no secrets of its own. | `ncrm-api` only |
-| `ncrm-api` | Every API request: sign-in, studio data, and later inbound webhooks. Answers fast; slow work goes to the queue. | Postgres |
-| `ncrm-worker` | Background work: WhatsApp sends from the outbox, reminders, summaries. A stub today. | Postgres, WhatsApp *(planned)* |
+| `ncrm-api` | Every API request: sign-in, studio data, and WhatsApp's webhook. Answers fast; the bot's reply and sending happen after the response. | Postgres, WhatsApp Cloud API, the AI provider (only if AI mode is used) |
+| `ncrm-worker` | Background work: upkeep every few minutes, and every 20 seconds any WhatsApp message still waiting to go out. | Postgres, WhatsApp Cloud API |
+| `ncrm-admin` | A command-line tool for whoever runs the server: which WhatsApp number belongs to which studio. | Postgres |
 
 The API and the worker never call each other. They coordinate through
 Postgres: the API writes rows (a message to send, a job to run) and the
@@ -64,8 +67,11 @@ crates/
                      monthly fees
     src/reports.rs   counts and sums for the dashboard's graphs
     src/jobs.rs      what the worker does for every studio
-    src/whatsapp.rs  the client for Meta's WhatsApp Cloud API (so far:
-                     sign-in codes)
+    src/whatsapp.rs  the client for Meta's WhatsApp Cloud API (sign-in codes,
+                     text, templates), and checking and reading its webhook
+    src/messaging.rs conversations and messages: the inbox, storing what
+                     arrives, the outbox and sending it
+    src/bot.rs       what the bot may say to whom: the menu, and AI mode
     src/import.rs    student lists from .xlsx/.csv: safe reading, preview, commit
     src/validate.rs  shared input checks with plain messages
     src/phone.rs     phone number normalization
@@ -86,6 +92,10 @@ crates/
     src/attendance.rs  /sessions, /attendance/alerts, /students/{id}/attendance
     src/fees.rs      /fees/..., /payments, /charges, /students/{id}/fees
     src/reports.rs   /reports/..., /batches/{id}/history
+    src/inbox.rs     /inbox/..., /messaging/settings
+    src/webhook.rs   /webhooks/whatsapp: Meta's deliveries, signature-checked
+    src/bin/ncrm-admin.rs  the operator's tool: which WhatsApp number is
+                     which studio's; `say` to try the bot in test mode
   ncrm-worker/  background jobs on a timer (see "Background jobs")
 migrations/     SQL, applied in order, embedded into the binaries
 web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
@@ -167,6 +177,8 @@ the same pooled connection starts clean. A test proves this. Full rules:
 | `plans` | a price | `monthly`, `pack` (N classes within D days) or `drop_in`; money in whole paise |
 | `enrollments` | "this student is a regular in this class" | `ended_on` is the day they left; one open enrollment per student and class |
 | `credit_lots` | classes given at once (a pack sold, a drop-in, free classes) | Price copied at sale; `expires_on` is the last usable day. Append-only |
+| `conversations` | one WhatsApp number's thread with the studio | Phone unique per studio. Holds unread count, "needs a person", when the bot is paused until, and when they last wrote (WhatsApp's 24-hour reply window) |
+| `messages` | one WhatsApp message, in or out | Also the outbox: an outgoing row starts `queued`. Only its delivery columns can be updated; the text can't. WhatsApp's own message id is unique per studio, which is what makes a redelivered webhook harmless |
 | `credit_moves` | a later change to a lot (used, returned, taken back) | Append-only; a trigger keeps each lot between 0 and its size |
 | `sessions` | one meeting of a class on one date ("Hip-hop Beginners, Monday 23 Nov, 18:00") | Created on demand from the weekly slots, for today and the past only. `scheduled` or `cancelled` (with a reason). Holds who taught that day and whether they were there |
 | `attendance` | one student's mark at one session | `present`, `late`, `absent` or `excused`; `drop_in` for someone who isn't a regular; remembers the credit lot it used, or `owes_credit` when there was none |
@@ -512,6 +524,14 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `GET /reports/students` | view studio | Joined and left per month, last six months |
 | `GET /reports/fees` | manage fees | What's owed in four age buckets; `collection` (charged, collected, per day this month) is null without "view financials" |
 | `GET /batches/{id}/history` | view studio | Came and away at a class's last eight marked or cancelled meetings |
+| `GET /inbox` | use inbox | WhatsApp conversations, those waiting for a person first. Times also come in the studio's own date and clock |
+| `GET /inbox/{id}` | use inbox | One conversation with its latest 200 messages. Opening it marks it read |
+| `POST /inbox/{id}/reply` | use inbox | `{text}`: queue a reply (refused more than 24 hours after their last message) and pause the bot there |
+| `POST /inbox/{id}/hand-back` | use inbox | Let the bot answer in this conversation again |
+| `GET /messaging/settings` | use inbox | Connected or not, the number as shown, bot mode, test mode or live, whether AI is available |
+| `PUT /messaging/settings` | manage messaging | `{bot_mode}`: `menu`, `ai` or `off` |
+| `GET /webhooks/whatsapp` | Meta's verify token | Meta's one-time check that the address is ours |
+| `POST /webhooks/whatsapp` | Meta's signature | Incoming messages and delivery reports. No session; not behind the origin guard |
 | `GET /fees/summary` | manage fees | To collect, overdue, students owing, fee settings; `collected_this_month_paise` is null without "view financials" |
 | `PUT /fees/settings` | manage classes | `{fees_from, fee_due_day}`: start monthly fees from a month (this one or later), or `null` to stop |
 | `GET /fees/dues?branch_id=&limit=&offset=` | manage fees | Students who owe, most overdue first |
@@ -578,6 +598,8 @@ do inside it:
 |---|---|---|---|---|
 | View the studio | ✓ | ✓ | ✓ | ✓ |
 | Manage branches | ✓ | ✓ | | |
+| Use the WhatsApp inbox (read, reply, hand back to the bot) | ✓ | ✓ | ✓ | |
+| Choose how the bot answers | ✓ | ✓ | | |
 | Manage staff | ✓ | ✓ | | |
 | Manage students (and put them in classes) | ✓ | ✓ | ✓ | |
 | Manage classes: timetable, prices, free credits | ✓ | ✓ | | |
@@ -677,6 +699,12 @@ Those need "manage classes", a reason, and leave an audit entry.
 | A report leaking who came or who owes | Report queries return counts and sums only; the collection series is withheld without "view financials" | `reports.rs` |
 | A sign-in code or the WhatsApp token ending up in a log | The code is never logged; errors from Meta are cut down to a status and error number; the token is hidden from debug output; redirects aren't followed | `whatsapp.rs` |
 | Sign-in hanging on Meta, or timing revealing who is staff | The send runs in the background with a 10 second limit; the HTTP answer is identical either way | `sign_in.rs`, `whatsapp.rs` |
+| Someone posting made-up WhatsApp messages to the webhook | Every delivery must carry Meta's HMAC of the exact body, keyed with the app secret, compared in constant time; without the two webhook settings the route is closed | `webhook.rs`, `WebhookConfig::signature_is_valid` |
+| A studio receiving another studio's messages | The studio comes only from the number a message was sent to; that column can't be written from inside a studio (column-level grant), and a number can belong to one studio | `0009_whatsapp.sql`, `messaging::studio_for_number` |
+| The bot telling a stranger about a student | Facts are read by the sender's number, inside the studio, for that contact's own students only; unknown numbers get the timetable | `bot::facts`, tests in `messaging.rs` and `whatsapp_inbox.rs` |
+| A message tricking the AI into doing something | The AI has no tools and is given only what the sender may already see; the worst case is an odd reply to the sender | `bot.rs` |
+| Parents' numbers and messages collecting in logs | The webhook, the senders and test mode log counts and error numbers, never a number or a message | `webhook.rs`, `messaging::send_queued` |
+| Meta retrying a delivery, or two senders at once | WhatsApp's message id is unique per studio; sending claims rows with `SKIP LOCKED` | `messaging::receive`, `send_queued` |
 | Payment references piling up in the audit log | Audit entries carry amounts, methods and receipt numbers, never the reference | `fees.rs` |
 | Error text showing internals | Constraint names and parser messages turned into sentences | `ncrm_core::error`, `extract.rs` |
 | A booby-trapped spreadsheet | 2 MB cap; zip entries actually unpacked under a 30 MB cap before parsing; cells streamed with row and column caps; old .xls refused; parsing on a blocking thread | `import.rs` |
@@ -697,7 +725,9 @@ Those need "manage classes", a reason, and leave an audit entry.
 ## Queries that look across studios
 
 These run as the owner role, outside any studio, and are the only ones
-allowed to. Each looks up only the caller's own phone number or session:
+allowed to. The sign-in ones look up only the caller's own phone number or
+session; the worker's and the webhook's return studio ids and nothing
+else:
 
 | Where | Why it can't be studio-scoped |
 |---|---|
@@ -709,6 +739,9 @@ allowed to. Each looks up only the caller's own phone number or session:
 | `orgs::find_by_slug` | Used by the development seeder (`ncrm-dev-seed`) to see whether the demo studio exists; later by signup |
 | `auth::cleanup` | Deletes old sign-in codes and sessions; those tables belong to no studio |
 | `jobs::studio_ids` | The worker's list of studios to do upkeep for. Returns ids only; everything it then does for a studio runs inside that studio's `TenantTx` |
+| `jobs::studios_with_messages_to_send` | The worker's list of studios with WhatsApp messages waiting. Returns ids only; sending then runs inside each studio's `TenantTx` |
+| `messaging::studio_for_number` | An incoming WhatsApp message names the number it was sent *to*, and nothing else says which studio it is for. Takes Meta's id for that number, returns one studio id or nothing. Called only by the webhook, after the signature check |
+| `ncrm-admin whatsapp list / set / clear` | The operator's tool that says which number belongs to which studio. Not reachable over HTTP; it needs the database password |
 
 ## Configuration
 
@@ -722,16 +755,30 @@ allowed to. Each looks up only the caller's own phone number or session:
 | `RUN_MIGRATIONS` | api | `1` to apply migrations at startup. |
 | `COOKIE_SECURE` | api | Default on (`__Host-` cookie, HTTPS only). `0` only for local http. |
 | `CODE_SENDER` | api | `log` (default, development: the code is written to the API's output) or `whatsapp`. |
-| `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | api | Meta Cloud API access token and the sending number's id. Both or neither; with neither, WhatsApp is off. |
+| `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | api, worker | Meta Cloud API access token, and the id of the platform's own number (the one sign-in codes come from). Both or neither. With neither, sign-in codes can't use WhatsApp and studio messages run in **test mode**: stored and shown in the inbox, delivered to nobody. Each studio's own number is not an environment variable; it is set with `ncrm-admin`. |
 | `WHATSAPP_OTP_TEMPLATE`, `WHATSAPP_TEMPLATE_LANG` | api | The approved authentication template for sign-in codes and its language code. Defaults `ncrm_sign_in_code`, `en`. |
 | `WHATSAPP_API_BASE` | api | Default `https://graph.facebook.com/v21.0`. Must be https. |
+| `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | api | For incoming messages. The first is a random string of ours that Meta echoes once to prove the webhook address; the second is the Meta app's secret, which signs every delivery. Both or neither; with neither, `/webhooks/whatsapp` answers 404. |
+| `AI_API_KEY` | api | An Anthropic API key for the bot's AI mode. Unset means a bot set to AI answers with the menu. |
+| `AI_MODEL`, `AI_API_BASE` | api | Defaults `claude-haiku-5-5` and `https://api.anthropic.com`. |
 | `WORKER_INTERVAL_SECS` | worker | Seconds between housekeeping passes. Default 300, minimum 30. |
 | `API_ORIGIN` | dashboard | Where the dashboard's server reaches the API, e.g. `http://127.0.0.1:8080`. Server-side only. |
 
 ## WhatsApp
 
-The API talks to one outside service: Meta's WhatsApp Cloud API
-(`https://graph.facebook.com`), over HTTPS, outbound only.
+Two outside services are involved, both over HTTPS: Meta's WhatsApp Cloud
+API (`https://graph.facebook.com`), and, only when a studio turns on the
+bot's AI mode, an AI provider (Anthropic's API by default).
+
+There are two kinds of number. The **platform's number**
+(`WHATSAPP_PHONE_NUMBER_ID`) sends sign-in codes to staff. Each **studio
+has its own number**, which parents and students write to; it is stored
+on the studio (`organizations.wa_phone_number_id`) and set by the
+operator with `ncrm-admin whatsapp set`. One access token
+(`WHATSAPP_TOKEN`) can send from every number in the WhatsApp Business
+account.
+
+### Sign-in codes (out)
 
 ```
 POST /auth/code ──▶ auth::request_code  (is this number staff? make a code)
@@ -742,13 +789,84 @@ POST /auth/code ──▶ auth::request_code  (is this number staff? make a code
                                               graph.facebook.com/…/messages
 ```
 
-So far it sends one thing: sign-in codes, as an *authentication
-template* (Meta allows one-time codes only through templates of that
-category, with a "copy code" button). The code is put in the request and
-then forgotten: it isn't stored in the clear anywhere (the database has
-only its HMAC) and isn't logged. Nothing is received from WhatsApp yet;
-the webhook, the outbox for studio messages, the inbox and the bot are
-the next steps in `docs/PLAN.md`.
+Sent as an *authentication template* (Meta allows one-time codes only
+through templates of that category, with a "copy code" button). The code
+is put in the request and then forgotten: it isn't stored in the clear
+anywhere (the database has only its HMAC) and isn't logged.
+
+### A parent writes in (in), and the answer (out)
+
+```
+ parent's phone
+      │ WhatsApp
+      ▼
+ Meta ── POST /webhooks/whatsapp ──▶ nginx ──▶ ncrm-api  webhook::deliver
+        signed: X-Hub-Signature-256                │
+                                                   │ 1. check the signature over the raw bytes
+                                                   │ 2. which studio? messaging::studio_for_number(to)
+                                                   │ 3. TenantTx: messaging::receive  (stored once,
+                                                   │    however many times Meta retries)
+                                                   │ 4. answer Meta: 200
+                                                   ▼
+                                    after the response, in the background:
+                                    bot::answer ── menu, or the AI provider ──▶ a `queued` message
+                                    messaging::send_queued ──▶ graph.facebook.com (from the studio's number)
+                                                   ▲
+ ncrm-worker, every 20s ───────────────────────────┘  anything still `queued` (WhatsApp was down,
+                                                       the API restarted) is sent, up to 4 tries
+```
+
+- **The webhook trusts only the signature.** It is the one route that
+  takes requests from outside without a session, so it sits outside the
+  origin guard and checks Meta's HMAC on every delivery instead. Unsigned
+  or wrongly signed: 401, nothing read. With the two webhook settings
+  unset it answers 404.
+- **Nothing in a delivery can name a studio.** The studio is whichever
+  one owns the number the message was sent to, looked up in our table.
+  Studios can't set that column themselves (see TENANCY.md), so one
+  studio can't point another's number at itself.
+- **The `messages` table is the outbox.** A reply (from staff, or from
+  the bot) is a row with status `queued`. Sending claims it (`sending`),
+  calls WhatsApp with no transaction open, then marks it `sent` or
+  `failed`. Two senders can't take the same row
+  (`FOR UPDATE SKIP LOCKED`); a sender that dies leaves it `sending` and
+  it is picked up again after two minutes. So a message is sent at least
+  once and very rarely twice, never lost. Delivery reports from Meta
+  (`delivered`, `read`, `failed`) arrive on the same webhook and only
+  ever move a message forward.
+- **The 24-hour window.** WhatsApp delivers free text only within 24
+  hours of the person's last message. The inbox refuses a reply outside
+  it, with the reason, instead of queuing something that will bounce.
+  Writing first (reminders) needs approved templates; `send_template`
+  exists for that and nothing uses it yet.
+- **Test mode.** Without `WHATSAPP_TOKEN`, everything above still runs
+  except the call to Meta: messages are stored, shown in the inbox and
+  marked sent. `ncrm-admin whatsapp say <studio> <number> "<text>"` plays
+  the part of a parent writing in, so the bot and the inbox can be tried
+  without a Meta account. Test mode logs that a message was not sent, not
+  what it said or to whom.
+
+### The bot
+
+Each studio chooses a mode (`organizations.bot_mode`): `menu` (default),
+`ai`, or `off`.
+
+- It **only reads**. It can't take a payment, mark attendance or change
+  a record.
+- **Who is asking decides what they hear.** The sender's number is
+  matched to a contact *in that studio*; the bot reads that contact's own
+  students (classes, what they owe, class credits) and nothing else. A
+  number the studio doesn't know gets the public timetable only.
+- **Anything it doesn't understand goes to a person**: the conversation
+  is flagged "needs you" in the inbox and the bot stays quiet there until
+  staff hand it back. When staff reply, the bot also steps out of that
+  conversation for 12 hours.
+- **AI mode** sends the provider: the person's recent messages in that
+  conversation, and the same facts the menu would show them (their
+  students' names, classes, fees, credits, and the timetable). It gets no
+  tools and no other data. If the call fails, the menu answers. The
+  model's reply is capped in length and sent as plain text. A studio's
+  owner sees this spelled out before choosing AI mode.
 
 ## Background jobs
 
@@ -760,6 +878,11 @@ the next steps in `docs/PLAN.md`.
 2. For every studio, inside that studio's own `TenantTx`: make sure the
    last week's class meetings exist (so an unmarked class is listed even
    if nobody opened the dashboard) and this month's fees are created.
+
+It also checks every 20 seconds for WhatsApp messages still waiting to
+go out (`jobs::send_messages`) and sends them. The API sends a message
+the moment it is written; the worker is the safety net and does the
+retries.
 
 Every job only does what a page load would also do, so running a pass
 twice, or while people are using the dashboard, changes nothing. One

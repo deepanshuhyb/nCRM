@@ -19,6 +19,7 @@ pub mod error;
 pub mod extract;
 pub mod fees;
 pub mod import;
+pub mod inbox;
 pub mod plans;
 pub mod reports;
 pub mod security;
@@ -26,6 +27,7 @@ pub mod sign_in;
 pub mod students;
 pub mod summary;
 pub mod team;
+pub mod webhook;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,6 +38,8 @@ use axum::middleware;
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use ncrm_core::auth::{AuthConfig, CodeSender};
+use ncrm_core::bot::Ai;
+use ncrm_core::whatsapp::{MessageSender, WebhookConfig};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -61,6 +65,13 @@ pub struct AppState {
     pub cookie_secure: bool,
     pub security: Arc<SecurityConfig>,
     pub limiter: Arc<RateLimiter>,
+    /// How studio WhatsApp messages leave. `Test` (nothing is really
+    /// sent) unless WhatsApp is configured.
+    pub messages: MessageSender,
+    /// The AI the bot may use, when `AI_API_KEY` is set.
+    pub ai: Option<Ai>,
+    /// What the WhatsApp webhook needs. Without it the webhook is closed.
+    pub webhook: Option<Arc<WebhookConfig>>,
 }
 
 impl AppState {
@@ -81,6 +92,9 @@ impl AppState {
             cookie_secure: true,
             limiter: Arc::new(RateLimiter::new(security.window)),
             security: Arc::new(security),
+            messages: MessageSender::Test,
+            ai: None,
+            webhook: None,
         }
     }
 
@@ -182,11 +196,27 @@ pub fn router(state: AppState) -> Router {
         .route("/batches/{id}", get(classes::get).put(classes::update))
         .route("/plans", get(plans::list).post(plans::create))
         .route("/plans/{id}", put(plans::update))
+        .route("/inbox", get(inbox::list))
+        .route("/inbox/{id}", get(inbox::thread))
+        .route("/inbox/{id}/reply", post(inbox::reply))
+        .route("/inbox/{id}/hand-back", post(inbox::hand_back))
+        .route(
+            "/messaging/settings",
+            get(inbox::settings).put(inbox::set_settings),
+        )
         // Layers run outside-in for requests: the last one added runs first.
         .layer(middleware::from_fn_with_state(
             state.clone(),
             security::origin_guard,
         ))
+        // Added after the origin guard, so it isn't covered by it: Meta is
+        // a server, not a page of ours. This route trusts the signature on
+        // each delivery instead (see webhook.rs). Everything below (size
+        // limit, timeout, headers) still applies.
+        .route(
+            "/webhooks/whatsapp",
+            get(webhook::verify).post(webhook::deliver),
+        )
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,

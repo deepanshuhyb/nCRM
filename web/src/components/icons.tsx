@@ -35,6 +35,12 @@ const PATHS = {
       <path d="M9 8h6M9 11h6M10 8c3.6 0 3.6 6 0 6H9l4.4 4" />
     </>
   ),
+  inbox: (
+    <>
+      <path d="M5 5.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7.5L7 21v-3.5H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" />
+      <path d="M8 10h8M8 13h5" />
+    </>
+  ),
   team: (
     <>
       <rect x="4" y="5" width="16" height="14" rx="3" />

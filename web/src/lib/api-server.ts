@@ -11,6 +11,7 @@ import type {
   BatchDetail,
   BatchSummary,
   Branch,
+  Conversation,
   Credits,
   DayAttendance,
   DueRow,
@@ -18,6 +19,7 @@ import type {
   FeesSummary,
   Me,
   MeetingCount,
+  MessagingSettings,
   MonthStudents,
   Page,
   PaymentsList,
@@ -33,6 +35,7 @@ import type {
   StudentFees,
   StudentListItem,
   Summary,
+  Thread,
 } from "@/lib/types";
 
 /**
@@ -227,3 +230,9 @@ export const getFeesReport = (): Promise<FeesReport> => apiGet<FeesReport>("/rep
 /** A class's last eight marked meetings, oldest first. */
 export const getClassHistory = (batchId: string): Promise<MeetingCount[]> =>
   apiGet<MeetingCount[]>(`/batches/${encodeURIComponent(batchId)}/history`);
+
+// ---------------------------------------------------------------- WhatsApp
+
+export const listInbox = (): Promise<Conversation[]> => apiGet<Conversation[]>("/inbox");
+export const getThread = (id: string): Promise<Thread> => apiGet<Thread>(`/inbox/${encodeURIComponent(id)}`);
+export const getMessagingSettings = (): Promise<MessagingSettings> => apiGet<MessagingSettings>("/messaging/settings");

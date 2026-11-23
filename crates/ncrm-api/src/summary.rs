@@ -5,7 +5,7 @@ use axum::extract::State;
 use axum::Json;
 use ncrm_core::access::Capability;
 use ncrm_core::db::TenantTx;
-use ncrm_core::{attendance, batches, fees, plans, students};
+use ncrm_core::{attendance, batches, fees, messaging, plans, students};
 use serde::Serialize;
 
 use crate::error::ApiError;
@@ -30,6 +30,9 @@ pub struct Summary {
     /// that don't handle fees.
     pub dues_paise: Option<i64>,
     pub students_owing: Option<i64>,
+    /// WhatsApp conversations waiting for a person. `None` for roles
+    /// without the inbox.
+    pub inbox_waiting: Option<i64>,
     /// Today's date where the studio is, so the dashboard can mark today
     /// without guessing the time zone.
     pub today: time::Date,
@@ -59,6 +62,11 @@ pub async fn get(State(state): State<AppState>, who: Staff) -> Result<Json<Summa
     } else {
         (None, None)
     };
+    let inbox_waiting = if who.0.role.can(Capability::UseInbox) {
+        Some(messaging::waiting(&mut tx).await?)
+    } else {
+        None
+    };
     tx.commit().await?;
     Ok(Json(Summary {
         branches,
@@ -71,6 +79,7 @@ pub async fn get(State(state): State<AppState>, who: Staff) -> Result<Json<Summa
         unmarked,
         dues_paise,
         students_owing,
+        inbox_waiting,
         today,
     }))
 }

@@ -214,6 +214,21 @@ On the Today page each class is a row with its time, a state tag (Marked,
 meter of marks. An instructor's own classes carry the same accent edge as
 on the timetable.
 
+## The inbox
+
+A conversation reads like a chat because that is what it is. Their
+messages sit left on the row colour; a person's reply sits right, filled
+dark; the bot's sits right too but only outlined, so what a person wrote
+and what was automatic can be told apart at a glance. Under every bubble
+is who and when ("Bot · 18:05 · Delivered"), so colour is never the only
+signal. Times are the studio's own, sent by the API.
+
+The list puts conversations waiting for a person first, with a "Needs
+you" tag; an unread count is a dark pill. The page asks the server again
+every 12 seconds while it is visible (`keep-fresh.tsx`): no socket. When
+a reply can't be sent (WhatsApp's 24 hours have passed), the form is
+replaced by the reason, not disabled without a word.
+
 ## Money
 
 Amounts are in the display face with tabular figures, formatted the

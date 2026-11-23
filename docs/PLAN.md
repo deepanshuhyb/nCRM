@@ -56,13 +56,19 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 ## 3. WhatsApp
 
 - [x] WhatsApp Cloud API client; sign-in codes over WhatsApp (`CODE_SENDER=whatsapp`), tested against a stand-in, not yet against Meta
-- [ ] Webhook receiver with duplicate-event protection
-- [ ] Outbox table, sending worker, delivery status
-- [ ] Identify sender by number; "which child?" for shared numbers
-- [ ] Bot: schedule, dues, classes left, book a class, report absence
+- [x] Webhook receiver (signature-checked) with duplicate-event protection; tested against a stand-in, not yet against Meta
+- [x] Outbox (the `messages` table), sending from the API and the worker, delivery status
+- [x] One WhatsApp number per studio, set by the operator (`ncrm-admin whatsapp set`); test mode and `ncrm-admin whatsapp say` when Meta isn't connected
+- [x] Identify sender by number (answers cover all of that contact's students)
+- [ ] "Which child?" follow-up for a parent with several students (today the answer lists each)
+- [x] Bot, fixed menu: this week's classes, fees due, classes left, can't come (handed to staff), talk to the team; strangers get the timetable only
+- [x] Bot, AI mode (`AI_API_KEY`), falling back to the menu; read-only
+- [ ] Bot: book a class; record an absence itself instead of handing it to staff
 - [ ] Teachers: mark attendance, report leave
-- [ ] Shared inbox with staff takeover
-- [ ] AI provider switch, including a studio's own key
+- [x] Shared inbox with staff takeover and hand-back; bot mode setting (menu, AI, off)
+- [ ] Photos, voice notes and documents in the inbox (today: a line saying one was sent)
+- [ ] Starting a conversation from the dashboard (needs approved templates)
+- [ ] AI provider switch, including a studio's own key (today: one server-wide Anthropic key)
 
 ## 4. Fees and reminders
 

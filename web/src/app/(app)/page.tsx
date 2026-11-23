@@ -77,7 +77,19 @@ export default async function HomePage() {
   // ------------------------------------------------- needs you today
   const overdue = fees ? fees.ageing.filter((b) => b.key !== "not_due") : [];
   const overduePaise = overdue.reduce((n, b) => n + b.due_paise, 0);
+  const waiting = summary.inbox_waiting ?? 0;
   const needs = [
+    ...(waiting > 0
+      ? [
+          {
+            key: "inbox",
+            href: "/inbox",
+            title: `${waiting} on WhatsApp ${waiting === 1 ? "is" : "are"} waiting`,
+            detail: "The bot passed these to a person",
+            action: "Reply",
+          },
+        ]
+      : []),
     ...alerts.unmarked.slice(0, 3).map((s) => ({
       key: `s-${s.id}`,
       href: `/attendance/${s.id}`,

@@ -16,7 +16,8 @@ use time::Duration;
 use uuid::Uuid;
 
 use crate::db::TenantTx;
-use crate::{attendance, auth, fees, Result};
+use crate::whatsapp::MessageSender;
+use crate::{attendance, auth, fees, messaging, Result};
 
 /// Every studio's id. The one cross-studio query jobs make; it returns
 /// ids only.
@@ -25,6 +26,52 @@ pub async fn studio_ids(pool: &PgPool) -> Result<Vec<Uuid>> {
         .fetch_all(pool)
         .await?;
     Ok(ids)
+}
+
+/// Studios with WhatsApp messages waiting to go out (queued, or claimed
+/// by a sender that seems to have died). A cross-studio query; it returns
+/// ids only, and exists so the worker doesn't open every studio every few
+/// seconds to find most of them have nothing to send.
+pub async fn studios_with_messages_to_send(pool: &PgPool) -> Result<Vec<Uuid>> {
+    let ids = sqlx::query_scalar(
+        "SELECT DISTINCT org_id FROM messages WHERE status IN ('queued', 'sending')",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(ids)
+}
+
+/// What one pass over the outbox did.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Outbox {
+    pub studios: usize,
+    pub sent: u32,
+    pub failed: u32,
+    pub retrying: u32,
+    /// Studios whose pass failed, with why.
+    pub errors: Vec<(Uuid, String)>,
+}
+
+/// Send every studio's queued WhatsApp messages. The API sends a message
+/// the moment it is written; this is the safety net for when that didn't
+/// work (WhatsApp was unreachable, the API restarted) and for retries.
+pub async fn send_messages(pool: &PgPool, sender: &MessageSender) -> Result<Outbox> {
+    let ids = studios_with_messages_to_send(pool).await?;
+    let mut done = Outbox {
+        studios: ids.len(),
+        ..Outbox::default()
+    };
+    for org_id in ids {
+        match messaging::send_queued(pool, org_id, sender).await {
+            Ok(sent) => {
+                done.sent += sent.sent;
+                done.failed += sent.failed;
+                done.retrying += sent.retrying;
+            }
+            Err(err) => done.errors.push((org_id, err.to_string())),
+        }
+    }
+    Ok(done)
 }
 
 /// What one housekeeping pass did.

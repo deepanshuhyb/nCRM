@@ -53,9 +53,20 @@ impl TestApp {
     }
 
     pub fn with_security(pool: PgPool, security: SecurityConfig) -> Self {
+        Self::with_state(pool, security, |_| {})
+    }
+
+    /// An app whose state a test adjusts before the routes are built
+    /// (the WhatsApp webhook settings, the AI client).
+    pub fn with_state(
+        pool: PgPool,
+        security: SecurityConfig,
+        adjust: impl FnOnce(&mut AppState),
+    ) -> Self {
         let (sender, codes) = CodeSender::capture();
         let auth = AuthConfig::new(vec![9u8; 32]).unwrap();
-        let state = AppState::with_security(pool.clone(), auth, sender, security);
+        let mut state = AppState::with_security(pool.clone(), auth, sender, security);
+        adjust(&mut state);
         TestApp {
             pool,
             router: router(state),

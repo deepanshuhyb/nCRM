@@ -44,9 +44,20 @@ services:
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_OTP_TEMPLATE: ${WHATSAPP_OTP_TEMPLATE:-ncrm_sign_in_code}
       WHATSAPP_TEMPLATE_LANG: ${WHATSAPP_TEMPLATE_LANG:-en}
+      # Incoming WhatsApp messages. Both empty means the webhook is closed.
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      # The bot's AI mode. Empty means a bot set to AI answers with the menu.
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
       # nginx sets this header to the visitor's address; nothing else can
       # reach the API, so it can be trusted for rate limits.
       CLIENT_IP_HEADER: x-real-ip
+    # Reachable from this machine only. nginx passes exactly one path to
+    # it from outside: /webhooks/whatsapp (see nginx.conf). Everything
+    # else the API serves still goes through the dashboard.
+    ports:
+      - "127.0.0.1:8080:8080"
 
   worker:
     build:
@@ -60,6 +71,11 @@ services:
     environment:
       DATABASE_URL: postgres://ncrm:${POSTGRES_PASSWORD}@postgres:5432/ncrm
       WORKER_INTERVAL_SECS: ${WORKER_INTERVAL_SECS:-300}
+      # The worker re-sends WhatsApp messages the API couldn't, so it needs
+      # the same sending settings.
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_TEMPLATE_LANG: ${WHATSAPP_TEMPLATE_LANG:-en}
 
   web:
     build:

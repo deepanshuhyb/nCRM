@@ -36,11 +36,33 @@ misses the first, third or fourth rule.
 
 A few things cannot run inside one studio: creating a studio at signup,
 finding which studio a phone number belongs to at sign-in, turning a session
-cookie into a studio context, and background jobs that sweep all studios.
+cookie into a studio context, background jobs that sweep all studios, and
+finding which studio an incoming WhatsApp message is for (from the number it
+was sent to).
 These use the pool directly and run as the database owner, which row-level
 security does not restrict. Keep them few, name them clearly, and never pass
 their results across studios. The current list is in
 `docs/ARCHITECTURE.md` ("Queries that look across studios").
+
+## Columns a studio must not change about itself
+
+`organizations` is the one studio table whose row *is* the studio, and
+some of its columns decide things across studios. So `ncrm_app` may update
+only named columns of it (`name`, `timezone`, the fee settings,
+`bot_mode`), not the whole row.
+
+The one that matters most is `wa_phone_number_id`, the studio's WhatsApp
+number. An incoming message is routed to whichever studio holds the number
+it was sent to. If a studio could write that column, it could claim another
+studio's number and receive their parents' messages. Only the operator sets
+it, with `ncrm-admin whatsapp set` (which connects as the database owner),
+and a unique index means one number can't belong to two studios.
+
+When adding a column to `organizations`, decide which side it is on. If a
+studio should be able to change it from the dashboard, add it to the
+`GRANT UPDATE (...)` list in a migration. If not, leave it out and it is
+read-only from inside a studio. The test
+`only_the_operator_can_give_a_studio_a_number` shows the refusal.
 
 Data that belongs to no studio (sign-in codes, sessions) lives in the
 `platform` schema, not `public`. `ncrm_app` has no access to that schema at

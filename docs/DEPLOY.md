@@ -110,6 +110,79 @@ template; 131026, that phone isn't on WhatsApp.
 Meta charges per authentication message. The amount depends on the
 country; check their current price list before a large rollout.
 
+## The WhatsApp inbox and the bot
+
+Parents and students write to the studio's own WhatsApp number; the
+messages land in the dashboard's Inbox, and the bot answers what it can.
+Like sign-in codes, this has been tested against stand-ins for Meta and
+for the AI provider, not against the real services.
+
+**Trying it with no Meta account.** Leave the `WHATSAPP_` settings empty.
+Everything runs in *test mode*: nothing reaches anyone, and you play the
+parent from the command line:
+
+```sh
+# locally, from the repo, with .env loaded (set -a; . ./.env; set +a)
+./target/debug/ncrm-admin whatsapp say rhythm-house "60001 00000" "hi"
+./target/debug/ncrm-admin whatsapp say rhythm-house "60001 00000" "2"
+# with Docker
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec api \
+  ncrm-admin whatsapp say <studio-slug> "<a parent's number>" "hi"
+```
+
+It prints the bot's answer, and the conversation appears in the Inbox,
+where staff can reply. `say` refuses to run once `WHATSAPP_TOKEN` is set,
+so it can't put made-up messages into a live inbox.
+
+**Going live.** On top of the sign-in settings above:
+
+1. In the Meta app's settings, copy the **"App secret"**. This is
+   `WHATSAPP_APP_SECRET`.
+2. Make up `WHATSAPP_VERIFY_TOKEN`: `openssl rand -hex 24`.
+3. Put both in `deploy/.env` and restart. Check that
+   `https://your-domain/webhooks/whatsapp` now answers 403 (closed to a
+   stranger) and not 404 (switched off).
+4. In the Meta app, under WhatsApp, "Configuration", set the **webhook**:
+   callback URL `https://your-domain/webhooks/whatsapp`, verify token the
+   string from step 2, and subscribe to the **`messages`** field. Meta
+   calls the address once to check it; if that fails, the token doesn't
+   match or nginx isn't passing the path (see `deploy/nginx.conf`).
+5. Add each studio's number to the same WhatsApp Business Account, note
+   its "Phone number ID", and tell ncrm which studio it belongs to:
+
+   ```sh
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec api \
+     ncrm-admin whatsapp set <studio-slug> <phone-number-id> "+91 98110 00000"
+   docker compose ... exec api ncrm-admin whatsapp list
+   ```
+
+   This is deliberately not in the dashboard: a studio that could set its
+   own number could claim someone else's.
+
+Things to know:
+
+- **WhatsApp only delivers a reply within 24 hours** of the person's last
+  message. The Inbox says so instead of letting you send something that
+  will bounce. Writing first needs approved templates, which reminders
+  will use; that isn't built yet.
+- **Photos and voice notes** arrive as a line saying one was sent. They
+  can't be opened in the Inbox yet.
+- **Meta charges** for conversations; check their price list.
+- **If messages don't arrive**, the API log says why without quoting
+  anyone: "a WhatsApp message arrived for a number no studio has" means
+  step 5 is missing or the id is wrong. If replies stay on "Sending…",
+  the worker log has Meta's error number (190: token; 131047: outside the
+  24 hours; 131026: not on WhatsApp).
+
+**The bot's AI mode.** A studio's owner chooses Menu, AI or Off in the
+Inbox. AI needs `AI_API_KEY` (an Anthropic API key) in `deploy/.env`;
+without it a bot set to AI answers with the menu. In AI mode, each reply
+sends the provider the person's recent messages, their own students'
+names, classes, fees and class credits, and the timetable. Nothing about
+anyone else, and the model can't change anything. Tell the studio's
+families if your privacy notice needs it. `AI_MODEL` picks the model
+(default `claude-haiku-5-5`); usage is billed by the provider.
+
 ## Updating
 
 ```sh

@@ -8,11 +8,16 @@
 //! Configuration (environment):
 //!   DATABASE_URL           the same database the API uses
 //!   WORKER_INTERVAL_SECS   seconds between passes (default 300, minimum 30)
+//!   WHATSAPP_*             as for the API; unset means messages run in test mode
 
 use std::time::Duration;
 
 use anyhow::Context;
+use ncrm_core::whatsapp::{MessageSender, WhatsApp, WhatsAppConfig};
 use ncrm_core::{db, jobs};
+
+/// Seconds between checks of the WhatsApp outbox.
+const OUTBOX_SECS: u64 = 20;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -26,10 +31,27 @@ async fn main() -> anyhow::Result<()> {
         .context("WORKER_INTERVAL_SECS must be a whole number of seconds")?
         .unwrap_or(300)
         .max(30);
+    // The same WhatsApp settings the API reads. Without them, messages
+    // are "sent" in test mode: marked sent, logged, delivered to nobody.
+    let sender = match WhatsAppConfig::from_vars(|name| std::env::var(name).ok())
+        .map_err(|why| anyhow::anyhow!("WhatsApp settings: {why}"))?
+    {
+        Some(config) => MessageSender::Cloud(WhatsApp::new(config)),
+        None => MessageSender::Test,
+    };
     let pool = db::connect(&database_url, 3)
         .await
         .context("could not connect to the database")?;
-    tracing::info!(every_secs = every, "ncrm-worker started");
+    tracing::info!(
+        every_secs = every,
+        whatsapp_live = sender.is_live(),
+        "ncrm-worker started"
+    );
+
+    // Messages are checked far more often than housekeeping runs: someone
+    // is waiting for them.
+    let mut outbox = tokio::time::interval(Duration::from_secs(OUTBOX_SECS));
+    outbox.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let mut timer = tokio::time::interval(Duration::from_secs(every));
     // If a pass overruns, wait for the next tick instead of catching up.
@@ -54,6 +76,24 @@ async fn main() -> anyhow::Result<()> {
                 // Usually the database being away for a moment; try again
                 // on the next tick.
                 Err(err) => tracing::error!(%err, "housekeeping pass failed"),
+            },
+            _ = outbox.tick() => match jobs::send_messages(&pool, &sender).await {
+                Ok(done) => {
+                    for (org_id, why) in &done.errors {
+                        tracing::error!(%org_id, why, "could not send a studio's messages");
+                    }
+                    // Quiet when there was nothing to do.
+                    if done.studios > 0 {
+                        tracing::info!(
+                            studios = done.studios,
+                            sent = done.sent,
+                            failed = done.failed,
+                            retrying = done.retrying,
+                            "outbox pass finished"
+                        );
+                    }
+                }
+                Err(err) => tracing::error!(%err, "outbox pass failed"),
             },
             _ = &mut stop => break,
         }

@@ -54,6 +54,10 @@ pub enum Capability {
     /// Kept away from the front desk: whoever takes the cash shouldn't be
     /// able to make the record of it disappear.
     AdjustFees,
+    /// Read the studio's WhatsApp conversations and reply in them.
+    UseInbox,
+    /// Choose how the bot answers (off, menu, AI).
+    ManageMessaging,
     /// Mark attendance for any class.
     MarkAnyAttendance,
     /// Mark attendance for classes the person teaches.
@@ -65,7 +69,7 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Capability; 11] = [
+    pub const ALL: [Capability; 13] = [
         Capability::ViewStudio,
         Capability::ManageBranches,
         Capability::ManageStaff,
@@ -73,6 +77,8 @@ impl Capability {
         Capability::ManageClasses,
         Capability::ManageFees,
         Capability::AdjustFees,
+        Capability::UseInbox,
+        Capability::ManageMessaging,
         Capability::MarkAnyAttendance,
         Capability::MarkOwnAttendance,
         Capability::ViewFinancials,
@@ -90,7 +96,12 @@ impl StaffRole {
             Manager => !matches!(cap, ManageBilling),
             FrontDesk => matches!(
                 cap,
-                ViewStudio | ManageStudents | ManageFees | MarkAnyAttendance | MarkOwnAttendance
+                ViewStudio
+                    | ManageStudents
+                    | ManageFees
+                    | UseInbox
+                    | MarkAnyAttendance
+                    | MarkOwnAttendance
             ),
             Instructor => matches!(cap, ViewStudio | MarkOwnAttendance),
         }
