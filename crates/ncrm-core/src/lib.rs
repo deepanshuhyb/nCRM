@@ -4,7 +4,9 @@
 //! transaction that is locked to one organization by Postgres row-level
 //! security. See `docs/TENANCY.md`.
 
+pub mod access;
 pub mod audit;
+pub mod auth;
 pub mod branches;
 pub mod db;
 pub mod error;

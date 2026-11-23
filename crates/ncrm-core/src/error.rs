@@ -17,6 +17,19 @@ pub enum Error {
     #[error("invalid input: {0}")]
     Invalid(String),
 
+    /// The sign-in code is wrong, expired or already used. Deliberately one
+    /// error for all three, so guesses learn nothing.
+    #[error("that code is wrong or has expired")]
+    InvalidCode,
+
+    /// Too many wrong guesses on the current code; a new one is needed.
+    #[error("too many wrong attempts; ask for a new code")]
+    CodeLocked,
+
+    /// Too many requests in a short time.
+    #[error("too many requests; try again later")]
+    RateLimited,
+
     #[error(transparent)]
     Database(sqlx::Error),
 }

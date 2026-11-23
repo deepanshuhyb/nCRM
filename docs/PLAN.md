@@ -17,8 +17,10 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [x] Phone number normalization
 - [x] API health endpoint, worker stub
 - [x] CI: format, lint, test
-- [ ] Staff sign-in with a one-time code
-- [ ] Role checks (owner, manager, front desk, instructor)
+- [x] Staff sign-in with a one-time code (code delivery logs to the console until WhatsApp is wired)
+- [x] Role checks (owner, manager, front desk, instructor)
+- [x] First studio-scoped endpoints: `/branches` list and create, with audit
+- [x] Architecture docs and engineering notes (`docs/ARCHITECTURE.md`, `docs/NOTES.md`)
 - [ ] Next.js dashboard shell and generated API client
 - [ ] Meta business verification started (owner task)
 
@@ -73,4 +75,6 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [ ] Subscription billing
 - [ ] Lead capture: Instagram, Meta lead ads, forms
 - [ ] Sheets sync, accounting export, public API and webhooks
+- [ ] Per-IP rate limiting at the reverse proxy (see NOTES, sign-in codes)
+- [ ] Cleanup job: delete sign-in codes older than a day, expired sessions
 - [ ] Events, make-up credits, progress tracking

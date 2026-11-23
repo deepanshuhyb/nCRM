@@ -35,13 +35,26 @@ misses the first, third or fourth rule.
 ## Work outside a studio's scope
 
 A few things cannot run inside one studio: creating a studio at signup,
-finding which studio a phone number belongs to at login, and background jobs
-that sweep all studios. These use the pool directly and run as the database
-owner, which row-level security does not restrict. Keep them few, name them
-clearly, and never pass their results across studios.
+finding which studio a phone number belongs to at sign-in, turning a session
+cookie into a studio context, and background jobs that sweep all studios.
+These use the pool directly and run as the database owner, which row-level
+security does not restrict. Keep them few, name them clearly, and never pass
+their results across studios. The current list is in
+`docs/ARCHITECTURE.md` ("Queries that look across studios").
+
+Data that belongs to no studio (sign-in codes, sessions) lives in the
+`platform` schema, not `public`. `ncrm_app` has no access to that schema at
+all.
 
 ## Tests
 
 `crates/ncrm-core/tests/tenant_isolation.rs` proves the rules against a real
 Postgres: reads, inserts, updates, deletes, moving rows between studios,
 connection reuse, and the audit log being append-only.
+`crates/ncrm-core/tests/sign_in.rs` checks that the studio role cannot read
+the sign-in tables, and `crates/ncrm-api/tests/sign_in_api.rs` checks
+through the HTTP API that a signed-in person only ever sees their current
+studio.
+
+Why foreign keys include `org_id`, and why the role switch is
+transaction-local: see `docs/NOTES.md`.
