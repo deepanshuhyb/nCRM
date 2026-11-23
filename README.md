@@ -5,6 +5,7 @@ integrations for class-based businesses.
 
 - Plan and progress: [docs/PLAN.md](docs/PLAN.md)
 - How studios are kept apart: [docs/TENANCY.md](docs/TENANCY.md)
+- Design language: [docs/DESIGN.md](docs/DESIGN.md)
 
 ## Layout
 
