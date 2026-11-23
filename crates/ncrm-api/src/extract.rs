@@ -36,8 +36,40 @@ where
             Err(rejection) if rejection.status() == axum::http::StatusCode::PAYLOAD_TOO_LARGE => {
                 Err(ApiError::TooLarge)
             }
-            Err(rejection) => Err(ApiError::Invalid(rejection.body_text())),
+            Err(rejection) => Err(ApiError::Invalid(json_problem(&rejection))),
         }
+    }
+}
+
+/// A plain sentence for a JSON body we couldn't read. Axum's own text
+/// names parser internals ("the 'hour' component could not be parsed at
+/// line 1 column 110"); people get the field that's wrong instead.
+fn json_problem(rejection: &axum::extract::rejection::JsonRejection) -> String {
+    use axum::extract::rejection::JsonRejection as R;
+    match rejection {
+        R::MissingJsonContentType(_) => "Send the request as JSON.".into(),
+        R::JsonSyntaxError(_) => "That request isn't valid JSON.".into(),
+        R::JsonDataError(_) => {
+            let text = rejection.body_text();
+            let detail = text
+                .split_once("target type: ")
+                .map(|(_, rest)| rest)
+                .unwrap_or("");
+            if let Some(field) = detail
+                .strip_prefix("missing field `")
+                .and_then(|r| r.split_once('`'))
+                .map(|(f, _)| f)
+            {
+                return format!("Something's missing: {field}.");
+            }
+            match detail.split_once(": ") {
+                Some((path, _)) if !path.is_empty() && !path.contains(' ') => {
+                    format!("{path} isn't in the right format.")
+                }
+                _ => "Some of that isn't in the right format.".into(),
+            }
+        }
+        _ => "Some of that isn't in the right format.".into(),
     }
 }
 
@@ -54,7 +86,11 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         match Query::<T>::from_request_parts(parts, state).await {
             Ok(Query(value)) => Ok(Params(value)),
-            Err(rejection) => Err(ApiError::Invalid(rejection.body_text())),
+            // Query values come from links and filters, not typing; one
+            // plain sentence is enough.
+            Err(_) => Err(ApiError::Invalid(
+                "That link has a filter we don't understand.".into(),
+            )),
         }
     }
 }

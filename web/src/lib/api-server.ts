@@ -7,11 +7,17 @@ import { notFound, redirect } from "next/navigation";
 import { apiOrigin } from "@/lib/env";
 import type {
   ApiErrorBody,
+  BatchDetail,
+  BatchSummary,
   Branch,
+  Credits,
   Me,
   Page,
+  Plan,
+  Room,
   StaffMember,
   StudentDetail,
+  StudentEnrollment,
   StudentListItem,
   Summary,
 } from "@/lib/types";
@@ -98,8 +104,49 @@ export function listStudents(query: StudentQuery): Promise<Page<StudentListItem>
   return apiGet<Page<StudentListItem>>(`/students?${params.toString()}`);
 }
 
-/** One student. Anything that isn't a UUID is a 404 without asking the API. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Ids come from the URL: anything that isn't a UUID is a 404 without asking the API. */
+function checkedId(id: string): string {
+  if (!UUID.test(id)) notFound();
+  return id;
+}
+
+/** One student. */
 export function getStudent(id: string): Promise<StudentDetail> {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) notFound();
-  return apiGet<StudentDetail>(`/students/${id}`);
+  return apiGet<StudentDetail>(`/students/${checkedId(id)}`);
+}
+
+/** A student's classes, current first. */
+export function getStudentEnrollments(id: string): Promise<StudentEnrollment[]> {
+  return apiGet<StudentEnrollment[]>(`/students/${checkedId(id)}/enrollments`);
+}
+
+/** A student's class credits. */
+export function getStudentCredits(id: string): Promise<Credits> {
+  return apiGet<Credits>(`/students/${checkedId(id)}/credits`);
+}
+
+/** Every room in the studio. */
+export function listRooms(): Promise<Room[]> {
+  return apiGet<Room[]>("/rooms");
+}
+
+/** Classes for the timetable. */
+export function listBatches(query: { branchId?: string; archived?: boolean } = {}): Promise<BatchSummary[]> {
+  const params = new URLSearchParams();
+  if (query.branchId && UUID.test(query.branchId)) params.set("branch_id", query.branchId);
+  if (query.archived) params.set("archived", "true");
+  const qs = params.toString();
+  return apiGet<BatchSummary[]>(`/batches${qs ? `?${qs}` : ""}`);
+}
+
+/** One class, with its roster when the person may see it. */
+export function getBatch(id: string): Promise<BatchDetail> {
+  return apiGet<BatchDetail>(`/batches/${checkedId(id)}`);
+}
+
+/** Prices. Front desk and up. */
+export function listPlans(): Promise<Plan[]> {
+  return apiGet<Plan[]>("/plans");
 }

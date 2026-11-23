@@ -23,7 +23,7 @@ pub fn normalize(input: &str) -> Result<String> {
             // A plus sign only counts before the first digit, and only once.
             '+' if digits.is_empty() && !has_plus => has_plus = true,
             ' ' | '-' | '(' | ')' | '.' => {}
-            _ => return Err(invalid(input)),
+            _ => return Err(invalid()),
         }
     }
 
@@ -41,18 +41,18 @@ pub fn normalize(input: &str) -> Result<String> {
         {
             local.to_string()
         } else {
-            return Err(invalid(input));
+            return Err(invalid());
         }
     };
 
     let len = national_or_full.len();
     if !(8..=15).contains(&len) || national_or_full.starts_with('0') {
-        return Err(invalid(input));
+        return Err(invalid());
     }
     // An Indian number must be a valid 10-digit mobile number.
     if let Some(rest) = national_or_full.strip_prefix(DEFAULT_COUNTRY_CODE) {
         if rest.len() != 10 || !is_indian_mobile(rest) {
-            return Err(invalid(input));
+            return Err(invalid());
         }
     }
     Ok(format!("+{national_or_full}"))
@@ -62,8 +62,12 @@ fn is_indian_mobile(ten_digits: &str) -> bool {
     matches!(ten_digits.as_bytes().first(), Some(b'6'..=b'9'))
 }
 
-fn invalid(input: &str) -> Error {
-    Error::Invalid(format!("not a valid phone number: {input:?}"))
+/// The input isn't repeated back: it's personal data and the person can see
+/// what they typed.
+fn invalid() -> Error {
+    Error::Invalid(
+        "That isn't a phone number we can use. Type a 10-digit mobile number, or start with + and the country code.".into(),
+    )
 }
 
 #[cfg(test)]

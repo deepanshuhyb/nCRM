@@ -43,9 +43,12 @@ pub enum Capability {
     ManageBranches,
     /// Add, edit or deactivate staff.
     ManageStaff,
-    /// Enroll and edit students and families.
+    /// Add and edit students and their contacts; put them in classes.
     ManageStudents,
-    /// Record payments, issue receipts, change fee plans.
+    /// Set up rooms, classes, schedules and prices; give or take back free
+    /// class credits. The shape of the business, so not front desk.
+    ManageClasses,
+    /// Sell class packs, record payments, issue receipts.
     ManageFees,
     /// Mark attendance for any class.
     MarkAnyAttendance,
@@ -58,11 +61,12 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Capability; 9] = [
+    pub const ALL: [Capability; 10] = [
         Capability::ViewStudio,
         Capability::ManageBranches,
         Capability::ManageStaff,
         Capability::ManageStudents,
+        Capability::ManageClasses,
         Capability::ManageFees,
         Capability::MarkAnyAttendance,
         Capability::MarkOwnAttendance,
@@ -121,6 +125,8 @@ mod tests {
         assert!(FrontDesk.can(MarkAnyAttendance));
         assert!(!FrontDesk.can(ManageBranches));
         assert!(!FrontDesk.can(ManageStaff));
+        // Front desk sells packs but can't change prices or give classes away.
+        assert!(!FrontDesk.can(ManageClasses));
         assert!(!FrontDesk.can(ViewFinancials));
     }
 
@@ -130,6 +136,13 @@ mod tests {
             Instructor.capabilities(),
             vec![ViewStudio, MarkOwnAttendance]
         );
+    }
+
+    #[test]
+    fn managers_shape_classes_and_prices() {
+        assert!(Manager.can(ManageClasses));
+        assert!(Owner.can(ManageClasses));
+        assert!(!Instructor.can(ManageClasses));
     }
 
     #[test]

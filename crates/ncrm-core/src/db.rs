@@ -61,6 +61,30 @@ impl TenantTx {
         self.org_id
     }
 
+    /// Today's date where the studio is (its `timezone`, India by default).
+    /// Use this, not the server's clock or `CURRENT_DATE`: the server runs on
+    /// UTC, where it's still "yesterday" until 5:30 am in India.
+    pub async fn studio_today(&mut self) -> Result<time::Date> {
+        let today: time::Date = sqlx::query_scalar(
+            "SELECT (now() AT TIME ZONE timezone)::date FROM organizations WHERE id = $1",
+        )
+        .bind(self.org_id)
+        .fetch_one(&mut *self.tx)
+        .await?;
+        Ok(today)
+    }
+
+    /// Wait for, then hold until this transaction ends, a lock named
+    /// `name` within this studio. Serializes rare, check-then-write work
+    /// (schedule clash checks) that row locks can't cover.
+    pub async fn lock_studio(&mut self, name: &str) -> Result<()> {
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!("ncrm:{name}:{}", self.org_id))
+            .execute(&mut *self.tx)
+            .await?;
+        Ok(())
+    }
+
     /// The underlying connection, for running queries.
     pub fn conn(&mut self) -> &mut PgConnection {
         &mut self.tx

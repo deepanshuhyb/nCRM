@@ -53,6 +53,12 @@ crates/
     src/orgs.rs, branches.rs, audit.rs   studio data
     src/staff.rs     the team: hire, change role/phone/branch, deactivate
     src/students.rs  students, their contacts, search
+    src/rooms.rs     rooms inside a branch
+    src/batches.rs   classes and their weekly slots; clash checks
+    src/plans.rs     prices: monthly fees, packs, drop-ins
+    src/enrollments.rs  putting students in classes and taking them out
+    src/credits.rs   class credits from packs and drop-ins
+    src/validate.rs  shared input checks with plain messages
     src/phone.rs     phone number normalization
   ncrm-api/     HTTP layer (Axum)
     src/lib.rs       routes and protective layers (headers, limits, timeout)
@@ -64,6 +70,9 @@ crates/
     src/team.rs      /staff
     src/students.rs  /students and their contacts
     src/summary.rs   /summary, the counts on the home page
+    src/classes.rs   /rooms, /batches
+    src/plans.rs     /plans
+    src/enrollments.rs  /students/{id}/enrollments, /enrollments, credits
   ncrm-worker/  background jobs (stub)
 migrations/     SQL, applied in order, embedded into the binaries
 web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
@@ -71,7 +80,8 @@ web/            the dashboard (Next.js 16, TypeScript, Tailwind 4)
   src/app/api/[...path]/     same-origin gateway to the Rust API
   src/app/(auth)/            sign-in, choose a studio
   src/app/(app)/             the signed-in app: shell, home, branches,
-                             students, team
+                             classes (timetable, prices), students, team
+  src/components/timetable.tsx  the week grid (server-rendered, no JS)
   src/lib/api-server.ts      server-side API calls (server-only)
   src/lib/api-client.ts      browser-side API calls through /api
   src/lib/bff.ts, csp.ts, safe-redirect.ts   security helpers (unit-tested)
@@ -87,7 +97,7 @@ One PostgreSQL database, two schemas, two roles.
 
 | | `public` schema | `platform` schema |
 |---|---|---|
-| Holds | Studio data: organizations, branches, staff, students, contacts, audit log, and later classes, attendance, fees | Data that exists before anyone is inside a studio: sign-in codes, sessions |
+| Holds | Studio data: organizations, branches, staff, students, contacts, rooms, classes, plans, enrollments, class credits, audit log, and later attendance and fees | Data that exists before anyone is inside a studio: sign-in codes, sessions |
 | Every row has | `org_id` | no studio |
 | Protected by | Row-level security, policy per table | No access for `ncrm_app` at all |
 
@@ -123,22 +133,67 @@ the same pooled connection starts clean. A test proves this. Full rules:
 | `students` | someone who takes classes | Status `active`, `paused` or `left`; never deleted by the app (see below) |
 | `contacts` | a WhatsApp number we may message | Phone unique per studio, so siblings share one parent |
 | `student_contacts` | "this contact is the mother/father/self… of this student" | At most one `is_primary` per student; up to 4 per student |
+| `rooms` | a space inside a branch | Optional capacity; name unique per branch |
+| `batches` | a class that meets every week ("Hip-hop Beginners") | Branch, optional room and usual teacher, capacity, first and last day; archived, never deleted |
+| `batch_slots` | one weekly meeting of a class ("Monday 18:00–19:00") | Wall-clock time of the branch; no class crosses midnight |
+| `plans` | a price | `monthly`, `pack` (N classes within D days) or `drop_in`; money in whole paise |
+| `enrollments` | "this student is a regular in this class" | `ended_on` is the day they left; one open enrollment per student and class |
+| `credit_lots` | classes given at once (a pack sold, a drop-in, free classes) | Price copied at sale; `expires_on` is the last usable day. Append-only |
+| `credit_moves` | a later change to a lot (used, returned, taken back) | Append-only; a trigger keeps each lot between 0 and its size |
 | `audit_log` | something that changed, who did it | Append-only: the app role can insert and read, not change or delete |
 
 ```
 students ──< student_contacts >── contacts
-   │  (org_id, student_id)      (org_id, contact_id)
-   └── (org_id, branch_id) ──▶ branches
+   │
+   ├──< enrollments >── batches ──< batch_slots
+   │         │            │  └──▶ rooms ──▶ branches
+   │         └──▶ plans   └──▶ staff (teacher)
+   │
+   └──< credit_lots ──< credit_moves
+             └──▶ plans
 ```
+
+A class's room must be in the class's branch. The database enforces that
+too: `batches` references `rooms (org_id, branch_id, id)`, so a room from
+another branch (or another studio) is refused. With `room_id` NULL, the
+default `MATCH SIMPLE` skips the check.
 
 Every arrow is a composite foreign key that includes `org_id`. Foreign
 key checks ignore row-level security, so a plain `branch_id` key would let
 a student point at another studio's branch; with `(org_id, branch_id)` the
 database itself refuses it.
 
-The app role has no `DELETE` on `students`, `contacts` or `staff`. People
-leave by status (`left`, deactivated). Erasing a person on request is a
-separate, audited job, not a button (planned; see `docs/PLAN.md`).
+The app role has no `DELETE` on `students`, `contacts`, `staff`,
+`batches`, `plans` or `enrollments`. People leave by status (`left`,
+deactivated); classes are archived; plans stop being offered; leaving a
+class sets `ended_on`. Erasing a person on request is a separate, audited
+job, not a button (planned; see `docs/PLAN.md`).
+
+Class credits are a ledger the app role can only add to: `SELECT, INSERT`
+on `credit_lots` and `credit_moves`, nothing else. A credit is never
+edited; a correction is a new move with a reason. The trigger
+`credit_moves_keep_balance` refuses any move that would take a lot below
+zero or above its original size, so even a bug or two screens saving at
+once can't spend a credit twice.
+
+### Concurrency: who wins when two people save at once
+
+| Rule | How it holds |
+|---|---|
+| A room or teacher isn't double-booked | Every schedule change takes a per-studio lock (`TenantTx::lock_studio("schedule")`, a transaction-scoped advisory lock), then checks for clashes, then writes |
+| A class doesn't go over capacity | Enrolling locks the class row (`SELECT … FOR UPDATE`) before counting |
+| A studio keeps an owner | The other owners' rows are locked before the check |
+| A credit isn't spent twice | The ledger trigger takes a per-lot advisory lock before summing |
+
+Each has a test that runs two transactions at once and checks the second
+is refused.
+
+### Dates and times
+
+The API server runs on UTC. "Today" for a studio comes from
+`TenantTx::studio_today()`, which uses the studio's `timezone` (India by
+default). Class times are wall-clock `time` values, sent as `"18:00"`.
+Dates are `"2026-11-23"`.
 
 ## The dashboard
 
@@ -176,7 +231,8 @@ Browser ──POST /api/branches──▶ Next.js route handler app/api/[...path
    data; no data is cached in the browser.
 
 The gateway only forwards paths whose first segment is on the allowlist in
-`src/lib/bff.ts`: `auth`, `branches`, `staff`, `students`, `summary`. A new
+`src/lib/bff.ts`: `auth`, `batches`, `branches`, `enrollments`, `plans`,
+`rooms`, `staff`, `students`, `summary`. A new
 top-level API path is unreachable from the browser until it is added there.
 
 So the browser only ever talks to one origin: the session cookie is
@@ -207,6 +263,12 @@ referrer policy, permissions policy, HSTS in production) are set in
 | `/students/new` | manage students | Student details and up to 4 contacts |
 | `/students/[id]` | manage students | Profile, contacts (add, remove, choose the main one), edit details and status |
 | `/team` | manage staff | Team list with per-person edit; add someone. Only owners see the "Owner" role |
+| `/classes` | everyone | The week as a timetable per branch; each class fills up as students join and turns to the attention colour when full. A list by day on phones |
+| `/classes/new` | manage classes | Name, branch, room, teacher, capacity, then days and times |
+| `/classes/[id]` | everyone | Schedule, how full, roster (teacher of the class and front desk), add or take out students, edit and archive |
+| `/classes/plans` | manage students | Prices by kind; owners and managers add and edit |
+| `/branches` | (now also) | Rooms per branch, added and edited in place |
+| `/students/[id]` | (now also) | Their classes, put in a class, class credits, sell a pack, give or take back credits |
 
 Navigation shows only the pages the role can open (built from the
 capabilities in `/auth/me`). That is a convenience: a page opened directly
@@ -271,7 +333,7 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `POST /auth/code`, `/auth/verify` | nothing (rate limited) | Sign-in, see below |
 | `GET /auth/me` | session | Who am I, which studio, which capabilities |
 | `POST /auth/studio`, `/auth/sign-out` | session | Switch studio, sign out |
-| `GET /summary` | view studio | Counts for the home page: branches, open branches, active students, active team |
+| `GET /summary` | view studio | Counts for the home page (branches, students, team, classes, plans) and the studio's date |
 | `GET, POST /branches` | view / manage branches | List, add |
 | `GET, POST /staff` | manage staff | List the team, add someone |
 | `PUT /staff/{id}` | manage staff | Replace name, phone, role, branch, active |
@@ -280,6 +342,18 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `GET, PUT /students/{id}` | manage students | Profile with contacts; replace name, date of birth, branch, status, notes |
 | `POST /students/{id}/contacts` | manage students | Link a contact (reusing one with the same number) |
 | `DELETE /students/{id}/contacts/{contact_id}` | manage students | Unlink; the oldest remaining contact becomes the main one |
+| `GET /rooms` | view studio | Every room |
+| `POST /branches/{id}/rooms`, `PUT /rooms/{id}` | manage branches | Add; rename, resize or close (not while a class uses it) |
+| `GET /batches?branch_id=&archived=` | view studio | The timetable: classes with slots, names and how many are in each |
+| `POST /batches`, `PUT /batches/{id}` | manage classes | Create; replace everything including slots. `active: false` archives and takes everyone out |
+| `GET /batches/{id}` | view studio | One class; `roster` is null unless you manage students or teach it |
+| `GET /plans` | manage students | Prices (front desk needs them to sell) |
+| `POST /plans`, `PUT /plans/{id}` | manage classes | Add; change name, price, terms, offered. The kind never changes |
+| `GET, POST /students/{id}/enrollments` | manage students | Their classes; put them in one |
+| `POST /enrollments/{id}/end` | manage students | Take them out from today |
+| `GET /students/{id}/credits` | manage students | Usable classes, next expiry, every lot |
+| `POST /students/{id}/credits/sell` | manage fees | Sell a pack or drop-in |
+| `POST /students/{id}/credits/give`, `/take-back` | manage classes | Free classes or take some back, with a reason |
 
 Updates are `PUT` with the whole object, not `PATCH`. With `PATCH`, a
 missing `branch_id` and `"branch_id": null` ("clear it") are easy to mix
@@ -331,8 +405,9 @@ do inside it:
 | View the studio | ✓ | ✓ | ✓ | ✓ |
 | Manage branches | ✓ | ✓ | | |
 | Manage staff | ✓ | ✓ | | |
-| Manage students | ✓ | ✓ | ✓ | |
-| Manage fees | ✓ | ✓ | ✓ | |
+| Manage students (and put them in classes) | ✓ | ✓ | ✓ | |
+| Manage classes: timetable, prices, free credits | ✓ | ✓ | | |
+| Manage fees (sell packs, payments) | ✓ | ✓ | ✓ | |
 | Mark any class's attendance | ✓ | ✓ | ✓ | |
 | Mark own classes' attendance | ✓ | ✓ | ✓ | ✓ |
 | View financial reports | ✓ | ✓ | | |
@@ -361,6 +436,16 @@ Team rules on top of the matrix, enforced in `staff.rs` with row locks:
 Instructors can open the home page, so `/summary` needs only "view the
 studio". It returns counts, never names or numbers.
 
+Instructors see the whole timetable (so they know where to be), and the
+students of their own classes only: `GET /batches/{id}` includes the
+roster for staff who manage students and for that class's teacher, and
+`null` for everyone else. The roster has names and plans, never phone
+numbers.
+
+Front desk sells packs (money comes in) but can't give classes away or
+take credits back, because that's revenue the studio doesn't collect.
+Those need "manage classes", a reason, and leave an audit entry.
+
 ## Defences at a glance
 
 | Threat | Defence | Where |
@@ -370,6 +455,11 @@ studio". It returns counts, never names or numbers.
 | A studio losing its last owner | Row-locked "another active owner exists" check | `staff::update` |
 | The audit log becoming a contact list | Audit entries record field names and roles, never phone numbers | `staff.rs`, `students.rs` |
 | Search input breaking queries | `%` and `_` escaped, length capped, parameters bound | `students::list` |
+| Double-booked rooms or teachers | Clash check under a per-studio lock | `batches.rs` |
+| Overfilled classes | Capacity counted under a row lock | `enrollments::enroll` |
+| Credits spent twice or invented | Append-only ledger, balance trigger with a per-lot lock | migration 0004, `credits.rs` |
+| Free classes handed out quietly | Owners and managers only, reason required, audited | `credits::give` |
+| Error text showing internals | Constraint names and parser messages turned into sentences | `ncrm_core::error`, `extract.rs` |
 | Guessing sign-in codes | HMAC storage, 5 attempts per code, 5 codes per phone per hour, per-IP limits | `auth.rs`, `security.rs` |
 | Finding out who is staff | Identical answers and timing for every number | `auth.rs`, `sign_in.rs` |
 | Stolen database leaking sessions | Only SHA-256 of tokens stored | `platform.sessions` |
@@ -427,10 +517,13 @@ One VPS to start:
 - `#[sqlx::test]` gives every Rust test its own fresh database with all
   migrations applied, so tests are independent and run in parallel.
 - `ncrm-core/tests/`: rules directly (isolation between studios, sign-in
-  abuse cases, team and student rules in `people.rs`).
+  abuse cases, team and student rules in `people.rs`, classes, plans,
+  enrollments and credits in `classes.rs`, including races between two
+  transactions).
 - `ncrm-api/tests/`: the real router in memory, with a `Capture` code
   sender; `security_api.rs` attacks each protection; `people_api.rs` runs
-  students and team through each role, bad input and another studio.
+  students and team through each role, bad input and another studio;
+  `classes_api.rs` does the same for classes, prices and credits.
 - `web/src/lib/security.test.ts` (Vitest): redirects, gateway paths,
   header filtering, CSP, and the phone/age/date formatting helpers.
 - The Rust suite also passes as a non-superuser database owner, which is

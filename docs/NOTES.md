@@ -16,6 +16,198 @@ Template:
 
 ---
 
+## 2026-11-23: A CHECK that comes out NULL counts as passed
+
+**Context:** the `plans` table, where a pack needs a class count and a
+validity, and a monthly fee needs neither.
+
+**What wasn't obvious:** SQL has three truth values. A CHECK constraint
+refuses a row only when its expression is FALSE; NULL counts as passed.
+`CHECK (kind <> 'pack' OR classes BETWEEN 2 AND 500)` lets a pack with
+`classes = NULL` through, because `NULL BETWEEN 2 AND 500` is NULL, and
+`FALSE OR NULL` is NULL. The same trap catches `x > 0`, `a = b` and every
+comparison on a nullable column.
+
+**What we did:** `plans_shape` starts every branch with an explicit
+`IS NOT NULL` (`classes IS NOT NULL AND classes BETWEEN 2 AND 500`).
+`FALSE AND anything` is FALSE, so each branch is a definite yes or no. A
+test inserts a pack with no class count straight into the table, past the
+application, and checks the database refuses it.
+
+**Consequences:** any CHECK on a nullable column needs the same care. Ask
+"what does this give when the column is NULL?"
+
+## 2026-11-23: Class credits are a ledger the database guards
+
+**Context:** packs and drop-ins give a student class credits, which
+attendance will spend.
+
+**What wasn't obvious:** a `credits_left` number on the student is easy to
+corrupt. Two front-desk screens marking the same student at once each read
+"3", each write "2", and one class is never charged. A bug that adds
+instead of subtracts leaves no trace of what happened.
+
+**What we did:** two append-only tables. A *lot* is credits given at once
+(a pack, a drop-in, free classes), with the price copied in and a last
+usable day. A *move* is every later change (used, returned, taken back).
+What's left is `lot.classes + sum(moves.change)`. The app role can only
+`SELECT` and `INSERT` them, never update or delete.
+
+The guarantee lives in the database: the trigger
+`credit_moves_keep_balance` refuses any move that would take a lot below
+zero or above its size. Two moves on the same lot at once would each see
+the other missing, so the trigger first takes an advisory lock named after
+the lot. The second waits until the first commits. Under Postgres's
+default isolation (READ COMMITTED), each statement inside the function
+then takes a fresh snapshot, so its sum includes the first move. A row
+lock (`SELECT … FOR UPDATE` on the lot) would have been the usual tool,
+but Postgres requires UPDATE rights for row locks, and the app role
+deliberately has none on the ledger.
+
+Credits are spent from the lot that expires soonest, so nobody loses
+credits to expiry while holding ones that would have lasted.
+
+**Consequences:** attendance (next milestone) spends credits by inserting
+`used` moves; undoing an attendance mark inserts a `returned` move.
+Nothing ever rewrites history, so "where did her 8 classes go?" always
+has an answer.
+
+## 2026-11-23: No double-booked rooms or teachers, even with two people saving
+
+**Context:** creating and editing classes.
+
+**What wasn't obvious:** "is Studio A free on Monday at 6?" is a read,
+then the save is a write. Two managers adding classes for the same slot at
+the same moment both read "free" and both save. A unique index can't
+express "time ranges overlap on the same weekday", and an exclusion
+constraint can't see across the `batches` and `batch_slots` tables (the
+room is on one, the time on the other).
+
+**What we did:** every schedule change first takes a per-studio advisory
+lock (`TenantTx::lock_studio("schedule")`, released when the transaction
+ends), then checks clashes, then writes. Schedule edits are rare, so
+making them queue costs nothing anyone would notice. The clash query
+compares all the new slots at once by passing them as arrays and
+`unnest`ing them; two times overlap when each starts before the other
+ends, so back-to-back classes are fine. Date ranges are compared with
+Postgres's `daterange … && …`, where a missing last day means "no end".
+
+One trap in that query: excluding the class being edited with
+`b.id <> $1` would exclude *every* row when creating a new class, because
+`$1` is NULL and `anything <> NULL` is NULL (not true). It uses
+`b.id IS DISTINCT FROM $1`, which treats NULL as a plain value.
+
+**Consequences:** the same lock-then-check pattern fits any future rule
+that a constraint can't express. A test runs two creations at once and
+checks the second is refused.
+
+## 2026-11-23: The last place in a class goes to one student
+
+**Context:** enrolling into a class with a capacity.
+
+**What wasn't obvious:** counting "how many are in" and inserting a new
+enrollment is again read-then-write; two front-desk screens can both see
+"19 of 20".
+
+**What we did:** enrolling locks the class's row
+(`SELECT … FROM batches … FOR UPDATE`) before counting. The second
+enrollment waits, then counts 20 and is refused with "Bollywood Kids is
+full (20 of 20)". Lowering a class's capacity takes the same row lock, and
+can't go below the number already in.
+
+**Consequences:** a waitlist (planned) will hang off this same check.
+
+## 2026-11-23: Today is the studio's today
+
+**Context:** start dates, credit expiry, leaving a class "from today".
+
+**What wasn't obvious:** the server runs on UTC, so between midnight and
+5:30 am in India the server's `CURRENT_DATE` is still yesterday. A pack
+sold at 1 am would expire a day early.
+
+**What we did:** `TenantTx::studio_today()` asks Postgres for
+`now() AT TIME ZONE <studio timezone>`. Everything date-like in the
+classes code uses it, and `/summary` returns it so the dashboard marks
+the right day as today without guessing.
+
+**Consequences:** `students.joined_on` still defaults to `CURRENT_DATE`
+(written before this existed); it can be off by one for sign-ups between
+midnight and 5:30 am. Worth fixing with the next migration that touches
+students.
+
+## 2026-11-23: Times of day travel as "18:00"
+
+**Context:** class slots in JSON.
+
+**What wasn't obvious:** the `time` crate's readable format for a time of
+day is `18:00:00.0`, which is noisy and not what `<input type="time">`
+gives (`"18:00"`).
+
+**What we did:** a serde format made with
+`time::serde::format_description!(hhmm, Time, "[hour]:[minute]")`, used
+on the slot fields. Anything else (`"7pm"`, `"25:00"`) is refused while
+reading the request, and the person sees which field was wrong. Slot times
+are wall-clock times without a time zone: a 6 pm class is at 6 pm at its
+branch, whatever the date. Classes can't cross midnight.
+
+**Consequences:** attendance will turn slots into dated sessions using the
+branch's (or studio's) time zone.
+
+## 2026-11-23: Two date conventions, on purpose
+
+**Context:** when a student left a class, and until when credits last.
+
+**What wasn't obvious:** "ends on" can mean the last day included or the
+first day excluded, and mixing them up loses or adds a day.
+
+**What we did:** each field says which it is, in the migration and the
+code. `enrollments.ended_on` is the day they left: from that day on
+they're not in the class (so leaving "today" means today's class doesn't
+expect them; leaving before the start date makes `ended_on = starts_on`,
+zero days). `credit_lots.expires_on` is the last day the credits can be
+used, because that's what "use by 6 Jan" means to a person. A 30-day pack
+sold today expires on today + 29.
+
+**Consequences:** read the column comment before comparing these dates.
+
+## 2026-11-23: Error messages are sentences, never internals
+
+**Context:** the API's 400 and 409 answers.
+
+**What wasn't obvious:** database errors carried constraint names
+(`rooms_org_id_branch_id_name_key`) and JSON errors carried parser text
+("the 'hour' component could not be parsed at line 1 column 110").
+Neither helps a person, and both describe our internals to anyone
+probing.
+
+**What we did:** `ncrm_core::error` maps each known constraint to a
+sentence ("That branch already has a room with that name.") and unknown
+ones to a generic one. The JSON body reader in `extract.rs` reports the
+field instead ("slots[0].starts_at isn't in the right format.",
+"Something's missing: name."). Conflicts found by the application itself
+already were sentences ("Studio A is booked for Hip-hop Beginners on
+Wednesday 18:00–19:00.").
+
+**Consequences:** a new unique constraint should get a line in
+`unique_message`, or people see "That already exists."
+
+## 2026-11-23: Front desk sells, managers give
+
+**Context:** who may change class credits.
+
+**What wasn't obvious:** "manage fees" (front desk has it) sounds like it
+should cover all credit changes. But selling a pack brings money in,
+while giving free classes or taking credits back changes what the studio
+is owed. The second is exactly where a studio quietly loses money.
+
+**What we did:** a new capability, "manage classes", for owners and
+managers: the timetable, prices, and free or taken-back credits. Both
+need a reason, which is stored on the lot or move and the change is
+audited. Selling a pack stays with "manage fees".
+
+**Consequences:** reports can later show "classes given free this month,
+by whom" straight from the ledger.
+
 ## 2026-11-23: Utility classes that did nothing (CSS cascade layers)
 
 **Context:** the student profile and the theme button.

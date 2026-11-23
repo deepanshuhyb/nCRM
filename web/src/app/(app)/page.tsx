@@ -34,14 +34,27 @@ export default async function HomePage() {
       view: can.has("manage_staff") ? "/team" : null,
     },
     {
+      title: "Set up classes",
+      done: summary.classes > 0,
+      detail: summary.classes > 0 ? `${summary.classes} on the timetable` : "Days, times, room and teacher",
+      action: can.has("manage_classes") ? { href: "/classes/new", label: "Add a class" } : null,
+      view: "/classes",
+    },
+    {
+      title: "Set prices and packs",
+      done: summary.plans > 0,
+      detail: summary.plans > 0 ? `${summary.plans} offered` : "Monthly fees, packs and drop-ins",
+      action: can.has("manage_classes") ? { href: "/classes/plans", label: "Set prices" } : null,
+      view: can.has("manage_students") ? "/classes/plans" : null,
+    },
+    {
       title: "Add students",
       done: summary.active_students > 0,
       detail: summary.active_students > 0 ? `${summary.active_students} active` : "With the number we should message",
       action: can.has("manage_students") ? { href: "/students/new", label: "Add a student" } : null,
       view: can.has("manage_students") ? "/students" : null,
     },
-    { title: "Set up classes and batches", done: false, detail: "Coming next", action: null, view: null },
-    { title: "Connect WhatsApp", done: false, detail: "After classes", action: null, view: null },
+    { title: "Connect WhatsApp", done: false, detail: "Comes after attendance", action: null, view: null },
   ];
   const remaining = steps.filter((s) => !s.done).length;
 
@@ -105,8 +118,13 @@ export default async function HomePage() {
             note={`You're ${ROLE_LABEL[studio.role].toLowerCase()}`}
             href={can.has("manage_staff") ? "/team" : null}
           />
-          <Tile label="Branches" value={String(summary.branches)} note={`${summary.open_branches} open`} href="/branches" />
-          <Tile label="Attendance" value="Not yet" note="Starts once classes are set up" href={null} small />
+          <Tile
+            label="Classes"
+            value={String(summary.classes)}
+            note={summary.classes === 0 ? "Set up your timetable" : `${summary.plans} ${summary.plans === 1 ? "price" : "prices"} set`}
+            href="/classes"
+          />
+          <Tile label="Attendance" value="Not yet" note="Comes next, on top of the timetable" href={null} small />
         </section>
       </div>
     </div>

@@ -24,6 +24,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   // Only show what the role can open. The API refuses the rest anyway.
   const nav: NavItem[] = [
     { href: "/", label: "Home" },
+    { href: "/classes", label: "Classes" },
     ...(can.has("manage_students") ? [{ href: "/students", label: "Students" }] : []),
     ...(can.has("manage_staff") ? [{ href: "/team", label: "Team" }] : []),
     { href: "/branches", label: "Branches" },

@@ -12,8 +12,11 @@
 //!   the home-screen counts.
 
 pub mod branches;
+pub mod classes;
+pub mod enrollments;
 pub mod error;
 pub mod extract;
+pub mod plans;
 pub mod security;
 pub mod sign_in;
 pub mod students;
@@ -119,6 +122,25 @@ pub fn router(state: AppState) -> Router {
             "/students/{id}/contacts/{contact_id}",
             delete(students::remove_contact),
         )
+        .route(
+            "/students/{id}/enrollments",
+            get(enrollments::list).post(enrollments::enroll),
+        )
+        .route("/enrollments/{id}/end", post(enrollments::end))
+        .route("/students/{id}/credits", get(enrollments::credits))
+        .route("/students/{id}/credits/sell", post(enrollments::sell))
+        .route("/students/{id}/credits/give", post(enrollments::give))
+        .route(
+            "/students/{id}/credits/take-back",
+            post(enrollments::take_back),
+        )
+        .route("/rooms", get(classes::list_rooms))
+        .route("/rooms/{id}", put(classes::update_room))
+        .route("/branches/{id}/rooms", post(classes::create_room))
+        .route("/batches", get(classes::list).post(classes::create))
+        .route("/batches/{id}", get(classes::get).put(classes::update))
+        .route("/plans", get(plans::list).post(plans::create))
+        .route("/plans/{id}", put(plans::update))
         // Layers run outside-in for requests: the last one added runs first.
         .layer(middleware::from_fn_with_state(
             state.clone(),

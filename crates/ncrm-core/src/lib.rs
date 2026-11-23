@@ -7,12 +7,18 @@
 pub mod access;
 pub mod audit;
 pub mod auth;
+pub mod batches;
 pub mod branches;
+pub mod credits;
 pub mod db;
+pub mod enrollments;
 pub mod error;
 pub mod orgs;
 pub mod phone;
+pub mod plans;
+pub mod rooms;
 pub mod staff;
 pub mod students;
+pub mod validate;
 
 pub use error::{Error, Result};

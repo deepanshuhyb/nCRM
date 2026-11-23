@@ -1,6 +1,6 @@
-//! `/students` — students and their contacts. Owners, managers and front
-//! desk. (Instructors will see the students of their own classes once
-//! classes exist.)
+//! `/students`: students and their contacts. Owners, managers and front
+//! desk. Instructors see the students of their own classes through
+//! `/batches/{id}` instead, and never contacts.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;

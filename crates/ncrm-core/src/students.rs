@@ -304,7 +304,15 @@ pub async fn update(
     .execute(tx.conn())
     .await?;
 
+    // Someone who leaves the studio leaves their classes too. (On a break,
+    // they keep their place.)
+    let mut classes_left = 0;
+    if edit.status == StudentStatus::Left && before.status != StudentStatus::Left {
+        classes_left = crate::enrollments::end_all_for_student(tx, id).await?;
+    }
+
     let mut changed = Vec::new();
+    let mut detail = serde_json::Map::new();
     if before.name != name {
         changed.push("name");
     }
@@ -316,10 +324,18 @@ pub async fn update(
     }
     if before.status != edit.status {
         changed.push("status");
+        detail.insert(
+            "status".into(),
+            json!({ "from": before.status, "to": edit.status }),
+        );
     }
     if before.notes != notes {
         changed.push("notes");
     }
+    if classes_left > 0 {
+        detail.insert("classes_left".into(), json!(classes_left));
+    }
+    detail.insert("changed".into(), json!(changed));
     audit::record(
         tx,
         NewAuditEntry {
@@ -327,7 +343,7 @@ pub async fn update(
             action: "student.updated".into(),
             entity: "student".into(),
             entity_id: Some(id),
-            detail: json!({ "changed": changed, "status": { "from": before.status, "to": edit.status } }),
+            detail: serde_json::Value::Object(detail),
         },
     )
     .await?;
@@ -354,7 +370,7 @@ pub async fn add_contact(
     }
     if existing.contacts.iter().any(|c| c.phone == contact.phone) {
         return Err(Error::Conflict(
-            "that number is already a contact for this student".into(),
+            "That number is already a contact for this student.".into(),
         ));
     }
     if existing.contacts.is_empty() {

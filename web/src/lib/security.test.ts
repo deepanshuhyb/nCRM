@@ -44,6 +44,12 @@ describe("apiTarget", () => {
     expect(apiTarget(API, ["students", "0b8f3e1c-1f2a-4c3d-9e8f-123456789abc", "contacts"], "")?.pathname).toBe(
       "/students/0b8f3e1c-1f2a-4c3d-9e8f-123456789abc/contacts",
     );
+    expect(apiTarget(API, ["students", "0b8f3e1c-1f2a-4c3d-9e8f-123456789abc", "credits", "take-back"], "")?.pathname).toBe(
+      "/students/0b8f3e1c-1f2a-4c3d-9e8f-123456789abc/credits/take-back",
+    );
+    for (const top of ["batches", "plans", "rooms", "enrollments"]) {
+      expect(apiTarget(API, [top], "")?.pathname).toBe(`/${top}`);
+    }
   });
 
   it.each([
@@ -127,5 +133,37 @@ describe("format helpers", async () => {
   });
   it("formats dates without time zones getting involved", () => {
     expect(formatDate("2026-11-03")).toBe("3 Nov 2026");
+  });
+});
+
+describe("class and money helpers", async () => {
+  const { addDays, formatRupees, isoWeekday, parseRupees, scheduleSummary } = await import("./format");
+  it("formats rupees the Indian way", () => {
+    expect(formatRupees(12450000)).toBe("₹1,24,500");
+    expect(formatRupees(99950)).toBe("₹999.50");
+    expect(formatRupees(0)).toBe("₹0");
+  });
+  it("reads prices people type, and refuses what isn't one", () => {
+    expect(parseRupees("1,500")).toBe(150000);
+    expect(parseRupees("₹ 999.5")).toBe(99950);
+    expect(parseRupees("0")).toBe(0);
+    expect(parseRupees("-5")).toBeNull();
+    expect(parseRupees("12.345")).toBeNull();
+    expect(parseRupees("abc")).toBeNull();
+    expect(parseRupees("")).toBeNull();
+  });
+  it("groups days that share a time", () => {
+    expect(
+      scheduleSummary([
+        { weekday: 1, starts_at: "18:00", ends_at: "19:00" },
+        { weekday: 3, starts_at: "18:00", ends_at: "19:00" },
+        { weekday: 6, starts_at: "10:00", ends_at: "11:30" },
+      ]),
+    ).toBe("Mon, Wed 18:00–19:00 · Sat 10:00–11:30");
+  });
+  it("knows weekdays and adds days without time zones", () => {
+    expect(isoWeekday("2026-11-23")).toBe(1);
+    expect(isoWeekday("2026-11-29")).toBe(7);
+    expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
   });
 });

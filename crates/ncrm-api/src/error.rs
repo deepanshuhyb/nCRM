@@ -57,11 +57,7 @@ impl ApiError {
                 "not_found",
                 "That doesn't exist, or it isn't in your studio.".into(),
             ),
-            ApiError::Conflict(what) => (
-                StatusCode::CONFLICT,
-                "conflict",
-                format!("That clashes with something that already exists ({what})."),
-            ),
+            ApiError::Conflict(what) => (StatusCode::CONFLICT, "conflict", what.clone()),
             ApiError::Invalid(what) => (StatusCode::BAD_REQUEST, "invalid_input", what.clone()),
             ApiError::InvalidCode => (
                 StatusCode::UNAUTHORIZED,

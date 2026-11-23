@@ -32,13 +32,14 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [x] Students with contacts (parents, guardians or themselves); one contact per number, shared by siblings
 - [x] Team management: hire, change role, phone or branch, deactivate; owner safeguards
 - [x] Students and team screens: list, search, add, profile, edit; navigation by role; home counts
-- [ ] Rooms, batches, schedules
-- [ ] Plans: monthly batch fee, class pack, drop-in
-- [ ] Enrollments and the credit ledger for packs
-- [ ] Instructors see their own batches' students (for attendance), not the whole list
+- [x] Rooms per branch; classes with weekly schedules; no double-booked rooms or teachers
+- [x] Plans: monthly fee, class pack, drop-in
+- [x] Enrollments with capacity, and the append-only credit ledger for packs
+- [x] Instructors see their own classes' students, not the whole list
+- [x] Dashboard: timetable, add and edit classes, prices, rosters, student classes and credits, rooms
 - [ ] Rename a contact; merge two contacts that turn out to be one person
 - [ ] Excel import with duplicate detection by phone number
-- [ ] Dashboard screens for classes, plans and enrollments
+- [ ] `students.joined_on` defaults to the studio's date, not the server's
 
 ## 2. Attendance and bookings
 

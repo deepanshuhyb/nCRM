@@ -5,7 +5,7 @@ use axum::extract::State;
 use axum::Json;
 use ncrm_core::access::Capability;
 use ncrm_core::db::TenantTx;
-use ncrm_core::students;
+use ncrm_core::{batches, plans, students};
 use serde::Serialize;
 
 use crate::error::ApiError;
@@ -18,6 +18,13 @@ pub struct Summary {
     pub open_branches: i64,
     pub active_students: i64,
     pub active_team: i64,
+    /// Classes that are running (not archived).
+    pub classes: i64,
+    /// Plans currently offered.
+    pub plans: i64,
+    /// Today's date where the studio is, so the dashboard can mark today
+    /// without guessing the time zone.
+    pub today: time::Date,
 }
 
 /// `GET /summary`
@@ -34,11 +41,17 @@ pub async fn get(State(state): State<AppState>, who: Staff) -> Result<Json<Summa
         .await
         .map_err(ncrm_core::Error::from)?;
     let active_students = students::count_active(&mut tx).await?;
+    let classes = batches::count_active(&mut tx).await?;
+    let plans = plans::count_active(&mut tx).await?;
+    let today = tx.studio_today().await?;
     tx.commit().await?;
     Ok(Json(Summary {
         branches,
         open_branches,
         active_students,
         active_team,
+        classes,
+        plans,
+        today,
     }))
 }

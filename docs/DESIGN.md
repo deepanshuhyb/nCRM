@@ -88,6 +88,23 @@ What makes it read as real glass rather than a template:
 - Something missing that will cause trouble later (a student with no
   contact) is called out in the attention colour on the row itself.
 
+## The timetable
+
+The classes page's one bold element. The week runs across, time runs
+down, one hour is 72px. Each class is a row-tinted block (no blur: it sits
+inside one glass panel) whose fill rises from the bottom as places are
+taken, in the "fine" tint; a full class takes the attention tint and
+border. The fill has no top edge: a line there reads as a strikethrough
+under the name. Classes at the same time sit side by side in lanes. An
+instructor's own classes carry an accent edge on the left and say "You
+teach". Today's column has a faint tint and a dark day pill. Below 900px
+the grid becomes a list by day, starting today, with a small meter per
+class. The whole thing is server-rendered: no JavaScript.
+
+Every block is a link whose accessible name says the class, day, time,
+place, teacher and how full it is, and the same text is the hover title,
+since narrow blocks truncate.
+
 ## Styles and Tailwind
 
 Our classes (`.glass`, `.row`, `.btn`, `.field`, `.tag`, …) live in

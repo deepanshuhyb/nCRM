@@ -7,6 +7,7 @@ export type Capability =
   | "manage_branches"
   | "manage_staff"
   | "manage_students"
+  | "manage_classes"
   | "manage_fees"
   | "mark_any_attendance"
   | "mark_own_attendance"
@@ -118,4 +119,112 @@ export type Summary = {
   open_branches: number;
   active_students: number;
   active_team: number;
+  classes: number;
+  plans: number;
+  /** The studio's date, YYYY-MM-DD. */
+  today: string;
+};
+
+export type Room = {
+  id: string;
+  org_id: string;
+  branch_id: string;
+  name: string;
+  capacity: number | null;
+  active: boolean;
+  created_at: string;
+};
+
+/** One weekly meeting. 1 = Monday … 7 = Sunday; times are "HH:MM". */
+export type Slot = { weekday: number; starts_at: string; ends_at: string };
+
+export type Batch = {
+  id: string;
+  org_id: string;
+  branch_id: string;
+  room_id: string | null;
+  instructor_id: string | null;
+  name: string;
+  style: string | null;
+  capacity: number | null;
+  starts_on: string;
+  ends_on: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BatchSummary = Batch & {
+  branch_name: string;
+  room_name: string | null;
+  instructor_name: string | null;
+  enrolled: number;
+  slots: Slot[];
+};
+
+export type RosterEntry = {
+  enrollment_id: string;
+  student_id: string;
+  student_name: string;
+  student_status: StudentStatus;
+  plan_id: string | null;
+  plan_name: string | null;
+  starts_on: string;
+};
+
+/** `roster` is null when the person may not see who's in the class. */
+export type BatchDetail = BatchSummary & { roster: RosterEntry[] | null };
+
+export type PlanKind = "monthly" | "pack" | "drop_in";
+
+export const PLAN_KIND_LABEL: Record<PlanKind, string> = {
+  monthly: "Monthly fee",
+  pack: "Class pack",
+  drop_in: "Drop-in",
+};
+
+export type Plan = {
+  id: string;
+  org_id: string;
+  name: string;
+  kind: PlanKind;
+  price_paise: number;
+  classes: number | null;
+  valid_days: number | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudentEnrollment = {
+  id: string;
+  batch_id: string;
+  batch_name: string;
+  style: string | null;
+  branch_name: string;
+  plan_id: string | null;
+  plan_name: string | null;
+  plan_price_paise: number | null;
+  starts_on: string;
+  ended_on: string | null;
+  slots: Slot[];
+};
+
+export type CreditLot = {
+  id: string;
+  plan_id: string | null;
+  plan_name: string | null;
+  classes: number;
+  remaining: number;
+  price_paise: number;
+  expires_on: string | null;
+  expired: boolean;
+  note: string | null;
+  created_at: string;
+};
+
+export type Credits = {
+  available: number;
+  next_expiry: { on: string; classes: number } | null;
+  lots: CreditLot[];
 };

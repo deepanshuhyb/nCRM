@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 
-import { getMe, listBranches } from "@/lib/api-server";
+import { getMe, listBranches, listRooms } from "@/lib/api-server";
 
 import { NewBranchForm } from "./new-branch-form";
+import { RoomsEditor } from "./rooms-editor";
 
 export const metadata: Metadata = { title: "Branches" };
 
 export default async function BranchesPage() {
-  const [me, branches] = await Promise.all([getMe(), listBranches()]);
+  const [me, branches, rooms] = await Promise.all([getMe(), listBranches(), listRooms()]);
   const canManage = me.studio!.capabilities.includes("manage_branches");
 
   return (
@@ -32,12 +33,20 @@ export default async function BranchesPage() {
             </div>
           ) : (
             branches.map((b) => (
-              <article key={b.id} className="glass flex flex-wrap items-center justify-between gap-3 p-5 sm:p-6">
-                <div className="min-w-0">
-                  <h2 className="font-display m-0 text-[22px] font-semibold">{b.name}</h2>
-                  <p className="muted mt-1 mb-0">{b.address ?? "No address added"}</p>
+              <article key={b.id} className="glass flex flex-col gap-4 p-5 sm:p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="font-display m-0 text-[22px] font-semibold">{b.name}</h2>
+                    <p className="muted mt-1 mb-0">{b.address ?? "No address added"}</p>
+                  </div>
+                  <span className={b.active ? "tag tag-good" : "tag tag-quiet"}>{b.active ? "Open" : "Closed"}</span>
                 </div>
-                <span className={b.active ? "tag tag-good" : "tag tag-quiet"}>{b.active ? "Open" : "Closed"}</span>
+                <RoomsEditor
+                  branchId={b.id}
+                  branchName={b.name}
+                  rooms={rooms.filter((r) => r.branch_id === b.id)}
+                  canManage={canManage && b.active}
+                />
               </article>
             ))
           )}
