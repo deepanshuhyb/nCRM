@@ -39,6 +39,11 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in deploy/.env}
       ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in deploy/.env}
       CODE_SENDER: ${CODE_SENDER:-log}
+      # Empty values mean "WhatsApp is off".
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_OTP_TEMPLATE: ${WHATSAPP_OTP_TEMPLATE:-ncrm_sign_in_code}
+      WHATSAPP_TEMPLATE_LANG: ${WHATSAPP_TEMPLATE_LANG:-en}
       # nginx sets this header to the visitor's address; nothing else can
       # reach the API, so it can be trusted for rate limits.
       CLIENT_IP_HEADER: x-real-ip

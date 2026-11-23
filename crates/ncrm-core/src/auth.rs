@@ -101,12 +101,14 @@ pub struct PendingCode {
 
 /// How codes reach people.
 ///
-/// An enum rather than a trait object keeps async simple; the WhatsApp
-/// variant is added with the WhatsApp milestone.
+/// An enum rather than a trait object keeps async simple.
 #[derive(Clone, Debug)]
 pub enum CodeSender {
     /// Write the code to the log. Development only.
     Log,
+    /// Send it over WhatsApp. The code goes to Meta and nowhere else: it
+    /// is not logged, and a failure reports only a status and error number.
+    WhatsApp(crate::whatsapp::WhatsApp),
     /// Keep codes in memory so tests can read them.
     Capture(Arc<Mutex<Vec<PendingCode>>>),
 }
@@ -126,6 +128,10 @@ impl CodeSender {
                 );
                 Ok(())
             }
+            CodeSender::WhatsApp(client) => client
+                .send_sign_in_code(&pending.phone, &pending.code)
+                .await
+                .map_err(|e| Error::Unavailable(e.to_string())),
             CodeSender::Capture(store) => {
                 store.lock().expect("capture store poisoned").push(pending);
                 Ok(())

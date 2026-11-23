@@ -55,6 +55,7 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 
 ## 3. WhatsApp
 
+- [x] WhatsApp Cloud API client; sign-in codes over WhatsApp (`CODE_SENDER=whatsapp`), tested against a stand-in, not yet against Meta
 - [ ] Webhook receiver with duplicate-event protection
 - [ ] Outbox table, sending worker, delivery status
 - [ ] Identify sender by number; "which child?" for shared numbers

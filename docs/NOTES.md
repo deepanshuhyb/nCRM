@@ -16,6 +16,39 @@ Template:
 
 ---
 
+## 2026-11-23: Sign-in codes over WhatsApp
+
+**Context:** until now sign-in codes could only be printed in the API's
+log, which is not a way to run a studio.
+
+**What wasn't obvious:**
+- WhatsApp doesn't let a business send a one-time code as an ordinary
+  message. It must be an *authentication template*, approved in advance,
+  with a "copy code" button, and the code is passed twice (for the text
+  and for the button).
+- Our rule is that a code is never stored or logged in the clear. An
+  outbox table (the natural design for outgoing messages) would store
+  it. And an error from the provider could repeat what we sent.
+- The API answers "a code is on its way" identically for every number so
+  nobody can learn who is staff. A slow call to Meta made only for real
+  staff would give that away through timing.
+- An HTTP client follows redirects by default, and would carry our
+  access token to wherever it was sent.
+
+**What we did:** `ncrm_core::whatsapp` sends the code directly (no
+outbox), from the background task the sign-in handler already used, with
+a 10 second limit. Errors are reduced to a status and Meta's error
+number before they leave the module. The config's debug output hides the
+token. Redirects are refused. Settings are read at startup and half-set
+settings stop the API with a message naming the missing one.
+
+**Consequences:** a failed send isn't retried; the person presses "send
+again" (five codes an hour). It is tested against a stand-in for Meta's
+API that runs inside the test (request shape, error handling, "only a
+staff number causes a message"), not against Meta: there were no
+credentials. Studio messages later go through an outbox table, because
+those are meant to be kept; sign-in codes never will.
+
 ## 2026-11-23: The blur diet (why scrolling stuttered)
 
 **Context:** the owner said movement looked choppy.

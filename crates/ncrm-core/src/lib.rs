@@ -25,5 +25,6 @@ pub mod rooms;
 pub mod staff;
 pub mod students;
 pub mod validate;
+pub mod whatsapp;
 
 pub use error::{Error, Result};

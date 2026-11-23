@@ -6,6 +6,7 @@ use ncrm_api::security::SecurityConfig;
 use ncrm_api::{router, AppState};
 use ncrm_core::auth::{AuthConfig, CodeSender};
 use ncrm_core::db;
+use ncrm_core::whatsapp::{WhatsApp, WhatsAppConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -20,9 +21,21 @@ async fn main() -> anyhow::Result<()> {
         .context("AUTH_SECRET is not set (generate one with: openssl rand -base64 48)")?;
     let auth = AuthConfig::new(secret.into_bytes())?;
 
+    let whatsapp = WhatsAppConfig::from_vars(|name| std::env::var(name).ok())
+        .map_err(|why| anyhow::anyhow!("WhatsApp settings: {why}"))?;
     let sender = match std::env::var("CODE_SENDER").as_deref() {
-        Ok("log") | Err(_) => CodeSender::Log,
-        Ok(other) => bail!("unknown CODE_SENDER {other:?}; only \"log\" exists so far"),
+        Ok("log") | Err(_) => {
+            tracing::warn!("sign-in codes are written to this log (CODE_SENDER=log): fine for development, not for real use");
+            CodeSender::Log
+        }
+        Ok("whatsapp") => match whatsapp {
+            Some(config) => {
+                tracing::info!(?config, "sign-in codes go out over WhatsApp");
+                CodeSender::WhatsApp(WhatsApp::new(config))
+            }
+            None => bail!("CODE_SENDER=whatsapp needs WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID"),
+        },
+        Ok(other) => bail!("unknown CODE_SENDER {other:?}; use \"log\" or \"whatsapp\""),
     };
 
     let pool = db::connect(&database_url, 10)

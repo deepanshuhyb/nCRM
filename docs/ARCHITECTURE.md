@@ -64,6 +64,8 @@ crates/
                      monthly fees
     src/reports.rs   counts and sums for the dashboard's graphs
     src/jobs.rs      what the worker does for every studio
+    src/whatsapp.rs  the client for Meta's WhatsApp Cloud API (so far:
+                     sign-in codes)
     src/import.rs    student lists from .xlsx/.csv: safe reading, preview, commit
     src/validate.rs  shared input checks with plain messages
     src/phone.rs     phone number normalization
@@ -672,6 +674,8 @@ Those need "manage classes", a reason, and leave an audit entry.
 | One student's payment used for another | Allocation foreign keys include `student_id` | migration 0007 |
 | Surprise charges when fees ship | Nothing is created until `fees_from` is set; a waived monthly fee never comes back | `fees::ensure_current_month`, `charges_one_per_month` |
 | A report leaking who came or who owes | Report queries return counts and sums only; the collection series is withheld without "view financials" | `reports.rs` |
+| A sign-in code or the WhatsApp token ending up in a log | The code is never logged; errors from Meta are cut down to a status and error number; the token is hidden from debug output; redirects aren't followed | `whatsapp.rs` |
+| Sign-in hanging on Meta, or timing revealing who is staff | The send runs in the background with a 10 second limit; the HTTP answer is identical either way | `sign_in.rs`, `whatsapp.rs` |
 | Payment references piling up in the audit log | Audit entries carry amounts, methods and receipt numbers, never the reference | `fees.rs` |
 | Error text showing internals | Constraint names and parser messages turned into sentences | `ncrm_core::error`, `extract.rs` |
 | A booby-trapped spreadsheet | 2 MB cap; zip entries actually unpacked under a 30 MB cap before parsing; cells streamed with row and column caps; old .xls refused; parsing on a blocking thread | `import.rs` |
@@ -716,9 +720,34 @@ allowed to. Each looks up only the caller's own phone number or session:
 | `BIND_ADDR` | api | Default `0.0.0.0:8080`. Bind to `127.0.0.1` in production. |
 | `RUN_MIGRATIONS` | api | `1` to apply migrations at startup. |
 | `COOKIE_SECURE` | api | Default on (`__Host-` cookie, HTTPS only). `0` only for local http. |
-| `CODE_SENDER` | api | `log` (default, development). WhatsApp comes with that milestone. |
+| `CODE_SENDER` | api | `log` (default, development: the code is written to the API's output) or `whatsapp`. |
+| `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | api | Meta Cloud API access token and the sending number's id. Both or neither; with neither, WhatsApp is off. |
+| `WHATSAPP_OTP_TEMPLATE`, `WHATSAPP_TEMPLATE_LANG` | api | The approved authentication template for sign-in codes and its language code. Defaults `ncrm_sign_in_code`, `en`. |
+| `WHATSAPP_API_BASE` | api | Default `https://graph.facebook.com/v21.0`. Must be https. |
 | `WORKER_INTERVAL_SECS` | worker | Seconds between housekeeping passes. Default 300, minimum 30. |
 | `API_ORIGIN` | dashboard | Where the dashboard's server reaches the API, e.g. `http://127.0.0.1:8080`. Server-side only. |
+
+## WhatsApp
+
+The API talks to one outside service: Meta's WhatsApp Cloud API
+(`https://graph.facebook.com`), over HTTPS, outbound only.
+
+```
+POST /auth/code ──▶ auth::request_code  (is this number staff? make a code)
+        │                     │
+        │ 202, always         └─▶ background task ──▶ whatsapp::send_sign_in_code
+        ▼                                                   │ HTTPS, bearer token
+   the browser                                              ▼
+                                              graph.facebook.com/…/messages
+```
+
+So far it sends one thing: sign-in codes, as an *authentication
+template* (Meta allows one-time codes only through templates of that
+category, with a "copy code" button). The code is put in the request and
+then forgotten: it isn't stored in the clear anywhere (the database has
+only its HMAC) and isn't logged. Nothing is received from WhatsApp yet;
+the webhook, the outbox for studio messages, the inbox and the bot are
+the next steps in `docs/PLAN.md`.
 
 ## Background jobs
 

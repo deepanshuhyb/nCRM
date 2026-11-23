@@ -37,6 +37,11 @@ pub enum Error {
     #[error("too many requests; try again later")]
     RateLimited,
 
+    /// Something outside ncrm (WhatsApp, a payment provider) didn't do
+    /// its part. The text is safe to log: it never holds what was sent.
+    #[error("{0}")]
+    Unavailable(String),
+
     #[error(transparent)]
     Database(sqlx::Error),
 }

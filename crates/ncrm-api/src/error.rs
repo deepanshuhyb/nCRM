@@ -118,6 +118,7 @@ impl From<ncrm_core::Error> for ApiError {
             E::InvalidCode => ApiError::InvalidCode,
             E::CodeLocked => ApiError::CodeLocked,
             E::RateLimited => ApiError::RateLimited,
+            E::Unavailable(what) => ApiError::Internal(what),
             E::Database(e) => ApiError::Internal(e.to_string()),
         }
     }
