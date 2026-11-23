@@ -108,3 +108,42 @@ async fn reports_follow_the_role(pool: PgPool) {
         assert_eq!(get(path, who).await.status, StatusCode::NOT_FOUND);
     }
 }
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn the_period_report_checks_who_asks_and_what_for(pool: PgPool) {
+    let org = common::studio(&pool, "period").await;
+    common::hire(&pool, &org, "+919800000011", StaffRole::Owner).await;
+    common::hire(&pool, &org, "+919800000012", StaffRole::FrontDesk).await;
+    let app = TestApp::new(pool.clone());
+    let (_, owner) = app.sign_in("+919800000011").await;
+    let (_, desk) = app.sign_in("+919800000012").await;
+
+    let r = app
+        .call(Method::GET, "/reports/period", None, Some(&owner))
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.json);
+    assert!(r.json["money"].is_object() && r.json["teachers"].is_array());
+    assert_eq!(r.json["classes"], serde_json::json!([]));
+
+    // Front desk gets the report without the money or the team's record.
+    let r = app
+        .call(Method::GET, "/reports/period", None, Some(&desk))
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.json["money"].is_null() && r.json["teachers"].is_null());
+
+    // Signed out, a date that isn't one, and a period that runs backwards.
+    let r = app.call(Method::GET, "/reports/period", None, None).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    for query in ["from=yesterday", "from=2026-05-10&to=2026-05-01"] {
+        let r = app
+            .call(
+                Method::GET,
+                &format!("/reports/period?{query}"),
+                None,
+                Some(&owner),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{query}");
+    }
+}

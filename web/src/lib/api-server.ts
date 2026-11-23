@@ -24,6 +24,7 @@ import type {
   MonthStudents,
   Page,
   PaymentsList,
+  PeriodReport,
   Plan,
   Receipt,
   Room,
@@ -238,3 +239,9 @@ export const listInbox = (): Promise<Conversation[]> => apiGet<Conversation[]>("
 export const getThread = (id: string): Promise<Thread> => apiGet<Thread>(`/inbox/${encodeURIComponent(id)}`);
 export const getMessagingSettings = (): Promise<MessagingSettings> => apiGet<MessagingSettings>("/messaging/settings");
 export const listBroadcasts = (): Promise<Broadcast[]> => apiGet<Broadcast[]>("/broadcasts");
+
+/** The Reports page's numbers for a stretch of days (both YYYY-MM-DD). */
+export function getPeriodReport(from: string, to: string): Promise<PeriodReport> {
+  const params = new URLSearchParams({ from, to });
+  return apiGet<PeriodReport>(`/reports/period?${params.toString()}`);
+}

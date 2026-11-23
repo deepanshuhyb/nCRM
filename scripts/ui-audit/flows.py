@@ -2,7 +2,7 @@
 add a student (the empty form must complain first), put them in a class, take a
 payment and open the receipt, switch profile tabs, mark a class, add a class,
 search, add a room, open a team editor, answer a parent in the WhatsApp inbox,
-switch the bot off and on, message a class, switch fee reminders off and on, switch theme, sign out.
+switch the bot off and on, message a class, switch fee reminders off and on, open and download a report, switch theme, sign out.
 
 usage:  python3 scripts/ui-audit/flows.py
 
@@ -197,6 +197,19 @@ with sync_playwright() as p:
         box.get_by_role("button", name=re.compile("^Turn reminders (off|on)$")).click(); pg.wait_for_timeout(1200)
         return f"{before.strip()} -> {after.strip()} -> back"
     step("switch fee reminders off and on again", reminders_switch)
+
+    def reports():
+        pg.goto(B + "/reports", wait_until="networkidle")
+        pg.get_by_role("link", name="Last 3 months").click(); pg.wait_for_url(re.compile("from=")); pg.wait_for_timeout(500)
+        lead = pg.locator("h1 + p, .lead").first.inner_text()
+        rows = pg.locator("section[aria-labelledby='classes-title'] li").count()
+        with pg.expect_download(timeout=15000) as got:
+            pg.locator("section[aria-labelledby='classes-title']").get_by_role("button", name="Download").click()
+        saved = got.value.path()
+        first = open(saved, encoding="utf-8-sig").read().splitlines()[0]
+        shot("reports")
+        return f"{lead.strip()} | {rows} classes | csv: {got.value.suggested_filename} starts {first}"
+    step("open a report for three months and download it", reports)
 
     def theme():
         pg.goto(B + "/", wait_until="networkidle")

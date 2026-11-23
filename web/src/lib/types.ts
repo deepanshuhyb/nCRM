@@ -525,3 +525,36 @@ export type Broadcast = {
   read: number;
   failed: number;
 };
+
+// ------------------------------------------------------------------ reports
+
+export type ClassPeriod = {
+  batch_id: string;
+  name: string;
+  branch_name: string;
+  /** Meetings that took place. */
+  meetings: number;
+  cancelled: number;
+  came: number;
+  away: number;
+};
+
+export type TeacherPeriod = { staff_id: string; name: string; classes: number; present: number; absent: number; unmarked: number };
+
+export type PeriodReport = {
+  from: string;
+  to: string;
+  classes: ClassPeriod[];
+  students: { joined: number; left: number; active: number };
+  /** Null unless the role manages the team. */
+  teachers: TeacherPeriod[] | null;
+  /** Null unless the role may see financial reports. */
+  money: {
+    collected_paise: number;
+    payments: number;
+    /** Fees that fell due in the period. */
+    charged_paise: number;
+    by_method: { method: PaymentMethod; paise: number; payments: number }[];
+    by_month: { month: string; collected_paise: number }[];
+  } | null;
+};

@@ -6,7 +6,8 @@ use axum::Json;
 use ncrm_core::access::Capability;
 use ncrm_core::db::TenantTx;
 use ncrm_core::reports::{
-    self, AttendanceQuery, DayAttendance, FeesReport, MeetingCount, MonthStudents,
+    self, AttendanceQuery, DayAttendance, FeesReport, MeetingCount, MonthStudents, PeriodQuery,
+    PeriodReport,
 };
 
 use crate::error::ApiError;
@@ -61,4 +62,18 @@ pub async fn class_history(
     let meetings = reports::class_history(&mut tx, who.actor(), id).await?;
     tx.commit().await?;
     Ok(Json(meetings))
+}
+
+/// `GET /reports/period?from=&to=`: the Reports page for a stretch of
+/// days. Money and the teachers' list come only for roles allowed them.
+pub async fn period(
+    State(state): State<AppState>,
+    who: Staff,
+    Params(query): Params<PeriodQuery>,
+) -> Result<Json<PeriodReport>, ApiError> {
+    who.require(Capability::ViewStudio)?;
+    let mut tx = TenantTx::begin(&state.pool, who.0.org_id).await?;
+    let report = reports::period(&mut tx, who.actor(), query).await?;
+    tx.commit().await?;
+    Ok(Json(report))
 }

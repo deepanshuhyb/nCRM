@@ -492,3 +492,201 @@ async fn a_classs_history_shows_marked_meetings_only(pool: PgPool) {
         assert!(matches!(r, Err(Error::NotFound)), "{r:?}");
     }
 }
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn a_period_report_adds_up_and_shows_each_role_its_share(pool: PgPool) {
+    use ncrm_core::reports::PeriodQuery;
+    let w = world(&pool, "period").await;
+    let other = world(&pool, "elsewhere").await;
+    let today = w.today;
+    let mut t = tx(&pool, &w).await;
+
+    // Today: two came, one away. Yesterday: one came, one away.
+    // The day before was cancelled.
+    let today_class = mark(&mut t, &w, today, &[(0, Present), (1, Absent), (2, Late)]).await;
+    mark(
+        &mut t,
+        &w,
+        today - Duration::days(1),
+        &[(0, Present), (1, Excused)],
+    )
+    .await;
+    let cancelled = attendance::day(
+        &mut t,
+        actor(&w.desk),
+        DayQuery {
+            date: Some(today - Duration::days(2)),
+            branch_id: None,
+        },
+    )
+    .await
+    .unwrap()[0]
+        .id;
+    attendance::cancel(
+        &mut t,
+        actor(&w.desk),
+        cancelled,
+        Cancel {
+            reason: "Rain".into(),
+        },
+    )
+    .await
+    .unwrap();
+    // ₹1,000 falls due today; ₹400 comes in by cash and ₹100 by UPI.
+    fees::add_charge(
+        &mut t,
+        actor(&w.owner),
+        w.kids[0],
+        NewCharge {
+            description: "Costume".into(),
+            amount_paise: 100_000,
+            due_on: None,
+        },
+    )
+    .await
+    .unwrap();
+    for (amount_paise, method) in [(40_000, PaymentMethod::Cash), (10_000, PaymentMethod::Upi)] {
+        fees::record_payment(
+            &mut t,
+            actor(&w.desk),
+            w.kids[0],
+            NewPayment {
+                amount_paise,
+                method,
+                reference: None,
+                note: None,
+                received_on: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    t.commit().await.unwrap();
+    // The teacher took today's class; yesterday's was never said.
+    sqlx::query("UPDATE sessions SET teacher_present = true WHERE id = $1")
+        .bind(today_class)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let last_three_days = || PeriodQuery {
+        from: Some(today - Duration::days(2)),
+        to: Some(today),
+    };
+    let mut t = tx(&pool, &w).await;
+    let report = reports::period(&mut t, actor(&w.owner), last_three_days())
+        .await
+        .unwrap();
+    assert_eq!((report.from, report.to), (today - Duration::days(2), today));
+    assert_eq!(report.classes.len(), 1);
+    let class = &report.classes[0];
+    assert_eq!(class.name, "Hip-hop");
+    assert_eq!(
+        (class.meetings, class.cancelled, class.came, class.away),
+        (2, 1, 3, 2)
+    );
+    // One student joined today; the other two long before the period.
+    assert_eq!(
+        (
+            report.students.joined,
+            report.students.left,
+            report.students.active
+        ),
+        (1, 0, 3)
+    );
+    let teachers = report.teachers.expect("an owner sees the team");
+    assert_eq!(teachers.len(), 1);
+    assert_eq!(teachers[0].name, "Ritu");
+    assert_eq!(
+        (
+            teachers[0].classes,
+            teachers[0].present,
+            teachers[0].absent,
+            teachers[0].unmarked
+        ),
+        (2, 1, 0, 1)
+    );
+    let money = report.money.expect("an owner sees the money");
+    assert_eq!(
+        (money.collected_paise, money.payments, money.charged_paise),
+        (50_000, 2, 100_000)
+    );
+    assert_eq!(money.by_method.len(), 2);
+    assert_eq!(
+        (money.by_method[0].method, money.by_method[0].paise),
+        (PaymentMethod::Cash, 40_000)
+    );
+    assert_eq!(
+        money
+            .by_month
+            .iter()
+            .map(|m| m.collected_paise)
+            .sum::<i64>(),
+        50_000
+    );
+
+    // Yesterday alone: the cancelled day and today fall outside.
+    let yesterday = reports::period(
+        &mut t,
+        actor(&w.owner),
+        PeriodQuery {
+            from: Some(today - Duration::days(1)),
+            to: Some(today - Duration::days(1)),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        (yesterday.classes[0].meetings, yesterday.classes[0].came),
+        (1, 1)
+    );
+    assert_eq!(yesterday.money.unwrap().collected_paise, 0);
+
+    // Front desk and instructors see classes and students, not money or
+    // the team's record.
+    for who in [actor(&w.desk), actor(&w.teacher)] {
+        let theirs = reports::period(&mut t, who, last_three_days())
+            .await
+            .unwrap();
+        assert_eq!(theirs.classes.len(), 1);
+        assert!(theirs.money.is_none() && theirs.teachers.is_none());
+    }
+
+    // With no dates: this month so far.
+    let default = reports::period(&mut t, actor(&w.owner), PeriodQuery::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        (default.from, default.to),
+        (today.replace_day(1).unwrap(), today)
+    );
+
+    // Backwards, and too long.
+    for (from, to) in [
+        (today, today - Duration::days(1)),
+        (today - Duration::days(400), today),
+    ] {
+        let r = reports::period(
+            &mut t,
+            actor(&w.owner),
+            PeriodQuery {
+                from: Some(from),
+                to: Some(to),
+            },
+        )
+        .await;
+        assert!(matches!(r, Err(Error::Invalid(_))));
+    }
+    drop(t);
+
+    // The other studio has had no classes or money in the period: none
+    // of this studio's show up in its report.
+    let mut o = tx(&pool, &other).await;
+    let theirs = reports::period(&mut o, actor(&other.owner), last_three_days())
+        .await
+        .unwrap();
+    assert!(theirs.classes.is_empty());
+    let money = theirs.money.unwrap();
+    assert_eq!((money.collected_paise, money.charged_paise), (0, 0));
+    assert!(theirs.teachers.unwrap().is_empty());
+}

@@ -26,7 +26,7 @@ PATHS = ["/", "/attendance", "/students", "/students/new", f"/students/{student}
          f"/students/{student}#attendance", f"/students/{student}#details", "/students/import", "/fees",
          "/classes", "/classes/new", f"/classes/{klass}", "/classes/plans", "/team", "/branches", "/more"]
 chat = sql("select id from conversations order by last_message_at desc limit 1")
-PATHS += ["/inbox", "/inbox/broadcast"] + ([f"/inbox/{chat}"] if chat else [])
+PATHS += ["/reports", "/inbox", "/inbox/broadcast"] + ([f"/inbox/{chat}"] if chat else [])
 if session: PATHS.insert(2, f"/attendance/{session}")
 if receipt: PATHS.insert(-6, f"/fees/receipts/{receipt}")
 

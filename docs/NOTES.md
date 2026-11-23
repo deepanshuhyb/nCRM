@@ -16,6 +16,34 @@ Template:
 
 ---
 
+## 2026-11-24: A downloaded report must not run a student's name as a formula
+
+**Context:** the Reports page lets an owner download each table as a
+CSV file to open in Excel or Google Sheets.
+
+**What wasn't obvious:**
+- A spreadsheet treats any cell that starts with `=`, `+`, `-` or `@` as
+  a formula. A class or person named `=HYPERLINK("http://…","click")`
+  becomes a live link in the owner's spreadsheet; older tricks could run
+  programs. The names in our tables were typed by other people (staff,
+  and through the import, whoever made the spreadsheet).
+- Excel opens a CSV as the computer's old regional encoding unless told
+  otherwise, turning `₹` and names in other scripts into noise.
+- Sending a file from the API through the dashboard's gateway would have
+  needed new pass-through rules for download headers.
+
+**What we did:** `components/download-csv.tsx` builds the file in the
+browser from numbers the page already has. Every text cell is quoted,
+quotes are doubled, and a cell starting with one of those characters
+gets a leading apostrophe, which spreadsheets show as plain text. The
+file starts with the three bytes that mark it as UTF-8. Nothing is
+requested from anywhere, so the content-security policy and the gateway
+are untouched.
+
+**Consequences:** any future export should go through this component,
+not hand-built strings. Numbers are written as numbers (rupees, not
+paise) so they can be summed.
+
 ## 2026-11-24: Fee reminders that can't repeat, pile up or wake anyone
 
 **Context:** the owner chose fee reminders only (no class reminders: one

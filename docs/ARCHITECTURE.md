@@ -528,6 +528,7 @@ same `not_found`/`too_large` shapes for paths or bodies it refuses itself.
 | `GET /reports/attendance?days=` | view studio | Marks per day across the studio (came, away), one row for every day, 7 to 92 days |
 | `GET /reports/students` | view studio | Joined and left per month, last six months |
 | `GET /reports/fees` | manage fees | What's owed in four age buckets; `collection` (charged, collected, per day this month) is null without "view financials" |
+| `GET /reports/period?from=&to=` | view studio | The Reports page for a stretch of days (a year at most; default this month so far): per class, meetings held, cancelled, came and away; students joined and left. The teachers' list (classes scheduled, taken, absent, not marked) only with "manage staff"; money (collected, by method, by month, fees that fell due) only with "view financials" |
 | `GET /batches/{id}/history` | view studio | Came and away at a class's last eight marked or cancelled meetings |
 | `GET /inbox` | use inbox | WhatsApp conversations, those waiting for a person first. Times also come in the studio's own date and clock |
 | `GET /inbox/{id}` | use inbox | One conversation with its latest 200 messages. Opening it marks it read |

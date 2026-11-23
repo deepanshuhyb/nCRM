@@ -6,6 +6,10 @@
 //! is owed for anyone who handles fees, what was collected only for roles
 //! that may see financial reports.
 //!
+//! The one place a name appears is the period report's list of teachers
+//! (how many classes each took), which is team information and only for
+//! roles that manage the team.
+//!
 //! Every series is zero-filled (a day with no classes is a row with
 //! zeros), so the dashboard can draw it without guessing at gaps.
 
@@ -16,6 +20,7 @@ use uuid::Uuid;
 use crate::access::{Actor, Capability};
 use crate::attendance::SessionStatus;
 use crate::db::TenantTx;
+use crate::fees::PaymentMethod;
 use crate::{fees, Error, Result};
 
 time::serde::format_description!(hhmm, Time, "[hour]:[minute]");
@@ -264,4 +269,232 @@ pub async fn class_history(
     .await?;
     rows.reverse();
     Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// A period, for the Reports page
+// ---------------------------------------------------------------------------
+
+/// The longest period one report can cover.
+pub const MAX_PERIOD_DAYS: i64 = 366;
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PeriodQuery {
+    /// First day. Defaults to the first of this month.
+    #[serde(default)]
+    pub from: Option<Date>,
+    /// Last day, inclusive. Defaults to today.
+    #[serde(default)]
+    pub to: Option<Date>,
+}
+
+/// One class over the period.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct ClassPeriod {
+    pub batch_id: Uuid,
+    pub name: String,
+    pub branch_name: String,
+    /// Meetings that took place (not cancelled, not in the future).
+    pub meetings: i64,
+    pub cancelled: i64,
+    /// Marks of "present" or "late".
+    pub came: i64,
+    /// Marks of "absent" or "excused".
+    pub away: i64,
+}
+
+/// One teacher over the period.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct TeacherPeriod {
+    pub staff_id: Uuid,
+    pub name: String,
+    /// Meetings they were down to teach that took place.
+    pub classes: i64,
+    /// Of those, marked as taught by them.
+    pub present: i64,
+    pub absent: i64,
+    /// Nobody said either way.
+    pub unmarked: i64,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct MethodTotal {
+    pub method: PaymentMethod,
+    pub paise: i64,
+    pub payments: i64,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct MonthMoney {
+    /// First day of the month.
+    pub month: Date,
+    pub collected_paise: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MoneyPeriod {
+    /// Money received in the period (cancelled receipts left out).
+    pub collected_paise: i64,
+    pub payments: i64,
+    /// Fees that fell due in the period (cancelled ones left out).
+    pub charged_paise: i64,
+    pub by_method: Vec<MethodTotal>,
+    pub by_month: Vec<MonthMoney>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StudentsPeriod {
+    pub joined: i64,
+    pub left: i64,
+    /// Active right now, whatever the period.
+    pub active: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PeriodReport {
+    pub from: Date,
+    pub to: Date,
+    pub classes: Vec<ClassPeriod>,
+    pub students: StudentsPeriod,
+    /// Only for roles that manage the team.
+    pub teachers: Option<Vec<TeacherPeriod>>,
+    /// Only for roles that may see financial reports.
+    pub money: Option<MoneyPeriod>,
+}
+
+/// Everything the Reports page shows for a stretch of days.
+pub async fn period(tx: &mut TenantTx, actor: Actor, query: PeriodQuery) -> Result<PeriodReport> {
+    actor.require(Capability::ViewStudio)?;
+    let today = tx.studio_today().await?;
+    let from = query
+        .from
+        .unwrap_or_else(|| today.replace_day(1).expect("every month has a first day"));
+    let to = query.to.unwrap_or(today);
+    if to < from {
+        return Err(Error::Invalid(
+            "The period ends before it starts. Swap the dates.".into(),
+        ));
+    }
+    if (to - from).whole_days() >= MAX_PERIOD_DAYS {
+        return Err(Error::Invalid(
+            "A report covers at most a year. Pick a shorter period.".into(),
+        ));
+    }
+    // Classes that haven't happened yet have nothing to report.
+    let until = to.min(today);
+
+    let classes = sqlx::query_as::<_, ClassPeriod>(
+        "SELECT b.id AS batch_id, b.name, br.name AS branch_name,
+                count(DISTINCT s.id) FILTER (WHERE s.status = 'scheduled') AS meetings,
+                count(DISTINCT s.id) FILTER (WHERE s.status = 'cancelled') AS cancelled,
+                count(a.id) FILTER (WHERE s.status = 'scheduled'
+                                      AND a.status IN ('present', 'late')) AS came,
+                count(a.id) FILTER (WHERE s.status = 'scheduled'
+                                      AND a.status IN ('absent', 'excused')) AS away
+           FROM batches b
+           JOIN branches br ON br.org_id = b.org_id AND br.id = b.branch_id
+           JOIN sessions s ON s.org_id = b.org_id AND s.batch_id = b.id
+                          AND s.on_date BETWEEN $1 AND $2
+           LEFT JOIN attendance a ON a.org_id = s.org_id AND a.session_id = s.id
+          GROUP BY b.id, b.name, br.name
+          ORDER BY b.name, br.name",
+    )
+    .bind(from)
+    .bind(until)
+    .fetch_all(tx.conn())
+    .await?;
+
+    let (joined, left, active): (i64, i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE joined_on BETWEEN $1 AND $2),
+                count(*) FILTER (WHERE left_on BETWEEN $1 AND $2),
+                count(*) FILTER (WHERE status = 'active')
+           FROM students",
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_one(tx.conn())
+    .await?;
+
+    let teachers = if actor.role.can(Capability::ManageStaff) {
+        let rows = sqlx::query_as::<_, TeacherPeriod>(
+            "SELECT st.id AS staff_id, st.name,
+                    count(*) AS classes,
+                    count(*) FILTER (WHERE s.teacher_present) AS present,
+                    count(*) FILTER (WHERE NOT s.teacher_present) AS absent,
+                    count(*) FILTER (WHERE s.teacher_present IS NULL) AS unmarked
+               FROM sessions s
+               JOIN staff st ON st.org_id = s.org_id AND st.id = s.instructor_id
+              WHERE s.status = 'scheduled' AND s.on_date BETWEEN $1 AND $2
+              GROUP BY st.id, st.name
+              ORDER BY st.name",
+        )
+        .bind(from)
+        .bind(until)
+        .fetch_all(tx.conn())
+        .await?;
+        Some(rows)
+    } else {
+        None
+    };
+
+    let money = if actor.role.can(Capability::ViewFinancials) {
+        let by_method = sqlx::query_as::<_, MethodTotal>(
+            "SELECT method, sum(amount_paise)::bigint AS paise, count(*) AS payments
+               FROM payments
+              WHERE voided_at IS NULL AND received_on BETWEEN $1 AND $2
+              GROUP BY method
+              ORDER BY sum(amount_paise) DESC, method",
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_all(tx.conn())
+        .await?;
+        // Every month the period touches, including ones with nothing.
+        let by_month = sqlx::query_as::<_, MonthMoney>(
+            "SELECT m::date AS month,
+                    coalesce((SELECT sum(p.amount_paise) FROM payments p
+                               WHERE p.voided_at IS NULL
+                                 AND p.received_on BETWEEN $1 AND $2
+                                 AND p.received_on >= m::date
+                                 AND p.received_on < (m + interval '1 month')::date), 0)::bigint
+                        AS collected_paise
+               FROM generate_series(date_trunc('month', $1::date), $2::date,
+                                    interval '1 month') AS m
+              ORDER BY m",
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_all(tx.conn())
+        .await?;
+        let charged_paise: i64 = sqlx::query_scalar(
+            "SELECT coalesce(sum(amount_paise), 0)::bigint FROM charges
+              WHERE voided_at IS NULL AND due_on BETWEEN $1 AND $2",
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_one(tx.conn())
+        .await?;
+        Some(MoneyPeriod {
+            collected_paise: by_method.iter().map(|m| m.paise).sum(),
+            payments: by_method.iter().map(|m| m.payments).sum(),
+            charged_paise,
+            by_method,
+            by_month,
+        })
+    } else {
+        None
+    };
+
+    Ok(PeriodReport {
+        from,
+        to,
+        classes,
+        students: StudentsPeriod {
+            joined,
+            left,
+            active,
+        },
+        teachers,
+        money,
+    })
 }

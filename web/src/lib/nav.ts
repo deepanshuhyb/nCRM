@@ -19,6 +19,7 @@ export function navFor(capabilities: Capability[]): NavItem[] {
     can.has("manage_fees") && { href: "/fees", label: "Fees", icon: "fees" },
     can.has("use_inbox") && { href: "/inbox", label: "Inbox", icon: "inbox" },
     { href: "/classes", label: "Classes", icon: "classes" },
+    (can.has("view_financials") || can.has("manage_staff")) && { href: "/reports", label: "Reports", icon: "reports" },
     can.has("manage_staff") && { href: "/team", label: "Team", icon: "team" },
     { href: "/branches", label: "Branches", icon: "branches" },
   ];

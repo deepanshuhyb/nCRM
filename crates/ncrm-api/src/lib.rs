@@ -182,6 +182,7 @@ pub fn router(state: AppState) -> Router {
         .route("/reports/attendance", get(reports::attendance))
         .route("/reports/students", get(reports::students))
         .route("/reports/fees", get(reports::fees))
+        .route("/reports/period", get(reports::period))
         .route("/batches/{id}/history", get(reports::class_history))
         .route("/fees/summary", get(fees::summary))
         .route("/fees/settings", put(fees::set_settings))

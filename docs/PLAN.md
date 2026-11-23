@@ -94,7 +94,8 @@ Postgres, Next.js dashboard, WhatsApp Cloud API, Razorpay.
 - [x] Dashboard overhaul (docs/UI_PLAN.md): solid surfaces, type scale, sidebar, loading skeletons, page transitions
 - [x] UI audit (docs/UI_AUDIT.md): every screen at three widths, both themes, each role; 19 problems fixed; checks in scripts/ui-audit/
 - [ ] Daily rollup tables (not needed until a studio is large; reports read live tables)
-- [ ] A Reports page with date ranges and export
+- [x] A Reports page: this month, last month, last three months or any dates; attendance by class, money by method and month, classes taken per teacher; each table downloads as CSV
+- [ ] Reports: a list of every payment in the period as a download; attendance per student
 - [ ] Morning summary on WhatsApp
 
 ## 6. Pilot

@@ -41,6 +41,12 @@ const PATHS = {
       <path d="M8 10h8M8 13h5" />
     </>
   ),
+  reports: (
+    <>
+      <path d="M4 20h16" />
+      <path d="M7 20v-6M12 20V6M17 20v-9" />
+    </>
+  ),
   team: (
     <>
       <rect x="4" y="5" width="16" height="14" rx="3" />
