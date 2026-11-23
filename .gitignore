@@ -4,3 +4,7 @@
 !.env.example
 .DS_Store
 node_modules
+
+# Python (scripts/)
+__pycache__/
+*.pyc
